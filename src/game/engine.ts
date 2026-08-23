@@ -1,4 +1,5 @@
 // Werewolf engine — pure state machine, no I/O.
+import { moderate } from '../moderation';
 // Night → (dawn) → Discussion (N rounds, sequential speakers) → Vote → Night ...
 
 export type Role = 'werewolf' | 'seer' | 'doctor' | 'villager';
@@ -264,6 +265,8 @@ export function validate(s: State, pid: string, a: Action): string | null {
   if (a.type !== pend.type) return `expected action type "${pend.type}", got "${a.type}"`;
   if (pend.type === 'speak') {
     if (typeof a.text !== 'string' || !a.text.trim()) return 'text required';
+    const m = moderate(a.text);
+    if (!m.ok) return `speech rejected: ${m.reason}`;
     return null;
   }
   const target = (a.target ?? '').trim();

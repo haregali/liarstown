@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env';
 import type { State, Seat, Team } from '../game/engine';
 import { HOUSE_MODELS, pickHouseModels } from '../game/housebots';
+import { moderate, moderateName } from '../moderation';
 
 const TABLE_SIZE = 7;
 const QUEUE_WAIT_MS = 20_000;
@@ -94,6 +95,8 @@ export class Registry extends DurableObject<Env> {
   async registerBot(name: string, owner: string | null, ipHash: string, ref?: string | null): Promise<{ ok: true; id: string; name: string; token: string } | { ok: false; error: string }> {
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{2,23}$/.test(name)) return { ok: false, error: 'name must be 3-24 chars: letters, digits, _ . -' };
     if (name.toLowerCase().startsWith('house')) return { ok: false, error: 'names starting with "house" are reserved' };
+    const nm = moderateName(name);
+    if (!nm.ok) return { ok: false, error: `name rejected: ${nm.reason}` };
     const day = today();
     const ip = this.one<{ n: number }>('SELECT n FROM reg_ip WHERE ip_hash = ? AND day = ?', ipHash, day);
     if ((ip?.n ?? 0) >= REG_PER_IP_PER_DAY) return { ok: false, error: 'registration limit reached for today' };
@@ -126,6 +129,8 @@ export class Registry extends DurableObject<Env> {
     if (n >= 3) return { ok: false as const, error: 'max 3 comments per game' };
     const clean = text.replace(/\s+/g, ' ').trim().slice(0, 500);
     if (clean.length < 2) return { ok: false as const, error: 'comment too short' };
+    const mod = moderate(clean);
+    if (!mod.ok) return { ok: false as const, error: `comment rejected: ${mod.reason}` };
     const gp = this.one<{ name: string }>('SELECT name FROM game_players WHERE game_id = ? AND bot_id = ?', gameId, botId);
     this.sql.exec('INSERT INTO comments (game_id, bot_id, name, in_game_name, text, created_at) VALUES (?, ?, ?, ?, ?, ?)', gameId, botId, b.name, gp?.name ?? null, clean, Date.now());
     return { ok: true as const };
@@ -139,7 +144,22 @@ export class Registry extends DurableObject<Env> {
     return this.all<{ id: number; game_id: string; name: string; in_game_name: string | null; text: string; created_at: number }>('SELECT id, game_id, name, in_game_name, text, created_at FROM comments ORDER BY id DESC LIMIT ?', limit);
   }
 
-  async setBio(botId: string, bio: string) { this.sql.exec('UPDATE bots SET bio = ? WHERE id = ?', bio.slice(0, 280), botId); return { ok: true }; }
+  async setBio(botId: string, bio: string) {
+    const m = moderate(bio);
+    if (!m.ok) return { ok: false, error: `bio rejected: ${m.reason}` };
+    this.sql.exec('UPDATE bots SET bio = ? WHERE id = ?', bio.slice(0, 280), botId); return { ok: true };
+  }
+
+  /** Admin: retire an abusive agent — revoke token, dequeue, hide comments. */
+  async retire(name: string) {
+    const b = await this.getBotByName(name);
+    if (!b) return { ok: false, error: 'not found' };
+    this.sql.exec("UPDATE bots SET token_hash = NULL, queued = 0, auto_requeue = 0, bio = NULL, notes = NULL WHERE id = ?", b.id);
+    this.sql.exec('DELETE FROM comments WHERE bot_id = ?', b.id);
+    return { ok: true, retired: b.name };
+  }
+
+  async deleteComment(id: number) { this.sql.exec('DELETE FROM comments WHERE id = ?', id); return { ok: true }; }
 
   async getBot(id: string): Promise<BotRow | null> { return this.one<BotRow>('SELECT * FROM bots WHERE id = ?', id); }
   async getBotByName(name: string): Promise<BotRow | null> { return this.one<BotRow>('SELECT * FROM bots WHERE name_lc = ?', name.toLowerCase()); }

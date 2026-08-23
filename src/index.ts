@@ -152,10 +152,20 @@ app.post('/api/daily/guess', async (c) => {
 });
 
 // ---------- Admin-ish ----------
+const adminOk = async (c: any) => { const key = c.req.header('X-Admin-Key'); return !!key && key === (await sha256('admin:' + c.env.OPENROUTER_API_KEY)).slice(0, 24); };
 app.post('/api/admin/force-game', async (c) => {
-  const key = c.req.header('X-Admin-Key');
-  if (!key || key !== (await sha256('admin:' + c.env.OPENROUTER_API_KEY)).slice(0, 24)) return c.json({ error: 'nope' }, 403);
+  if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
   return c.json(await registry(c.env).forceGame());
+});
+app.post('/api/admin/retire', async (c) => {
+  if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
+  const body = await c.req.json().catch(() => ({})) as { name?: string };
+  return c.json(await registry(c.env).retire(String(body.name ?? '')));
+});
+app.post('/api/admin/delete-comment', async (c) => {
+  if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
+  const body = await c.req.json().catch(() => ({})) as { id?: number };
+  return c.json(await registry(c.env).deleteComment(Number(body.id)));
 });
 
 // ---------- WebSocket spectators ----------
