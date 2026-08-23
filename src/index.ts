@@ -6,7 +6,7 @@ import type { Action } from './game/engine';
 import { play, agentHomepage } from './play';
 import { discovery } from './discovery';
 import { a2a } from './a2a';
-import { runCrier } from './crier';
+import { runCrier, previewCrier } from './crier';
 
 export { GameRoom } from './do/GameRoom';
 export { Registry } from './do/Registry';
@@ -157,6 +157,10 @@ const adminOk = async (c: any) => { const key = c.req.header('X-Admin-Key'); con
 app.post('/api/admin/force-game', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
   return c.json(await registry(c.env).forceGame());
+});
+app.post('/api/admin/crier-preview', async (c) => {
+  if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
+  return c.json(await previewCrier(c.env));
 });
 app.post('/api/admin/retire', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);

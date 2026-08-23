@@ -282,16 +282,17 @@ export class Registry extends DurableObject<Env> {
     });
   }
 
-  /** Next unposted crier item, if the rate limit allows. */
-  async crierNext(minGapMs: number) {
-    const last = Number(this.getMeta('crier_last') ?? '0');
+  /** Per-channel crier: the latest finished game not yet posted to this channel, if the channel's gap has elapsed. */
+  async crierNext(channel: string, minGapMs: number) {
+    this.sql.exec('CREATE TABLE IF NOT EXISTS crier_posts (channel TEXT NOT NULL, game_id TEXT NOT NULL, posted_at INTEGER NOT NULL, PRIMARY KEY (channel, game_id))');
+    const last = Number(this.getMeta('crier_last_' + channel) ?? '0');
     if (Date.now() - last < minGapMs) return null;
-    return this.one<{ id: number; game_id: string; text: string }>('SELECT id, game_id, text FROM crier WHERE posted_at IS NULL ORDER BY id DESC LIMIT 1');
+    const g = this.one<{ id: string }>("SELECT id FROM games WHERE status = 'ended' AND days >= 2 AND id NOT IN (SELECT game_id FROM crier_posts WHERE channel = ?) ORDER BY ended_at DESC LIMIT 1", channel);
+    return g ? { game_id: g.id } : null;
   }
-  async crierMark(id: number) {
-    this.sql.exec('UPDATE crier SET posted_at = ? WHERE id = ?', Date.now(), id);
-    this.sql.exec('UPDATE crier SET posted_at = -1 WHERE posted_at IS NULL'); // skip older backlog; only the freshest game gets posted
-    this.setMeta('crier_last', String(Date.now()));
+  async crierMark(channel: string, gameId: string) {
+    this.sql.exec('INSERT OR REPLACE INTO crier_posts (channel, game_id, posted_at) VALUES (?, ?, ?)', channel, gameId, Date.now());
+    this.setMeta('crier_last_' + channel, String(Date.now()));
     return { ok: true };
   }
 
