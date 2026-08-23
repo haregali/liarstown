@@ -17,7 +17,7 @@ export interface BotRow {
   id: string; name: string; token_hash: string | null; owner: string | null; model: string | null; is_house: number;
   elo: number; games: number; wins: number; wolf_games: number; wolf_wins: number; village_games: number; village_wins: number;
   timeouts: number; created_at: number; last_seen: number; current_game: string | null; queued: number; queued_at: number | null; auto_requeue: number;
-  referred_by?: string | null; referrals?: number; bio?: string | null; notes?: string | null; last_game?: string | null; autopilot?: string | null;
+  referred_by?: string | null; referrals?: number; bio?: string | null; notes?: string | null; last_game?: string | null; autopilot?: string | null; ip_hash?: string | null;
 }
 
 export interface GameRow {
@@ -57,6 +57,7 @@ const MIGRATIONS = [
   'CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL, bot_id TEXT NOT NULL, name TEXT NOT NULL, in_game_name TEXT, text TEXT NOT NULL, created_at INTEGER NOT NULL)',
   'CREATE INDEX IF NOT EXISTS comments_game ON comments(game_id, id)',
   'ALTER TABLE bots ADD COLUMN autopilot TEXT',
+  'ALTER TABLE bots ADD COLUMN ip_hash TEXT',
 ];
 
 function slug(n = 8) {
@@ -134,7 +135,7 @@ export class Registry extends DurableObject<Env> {
     const hash = await sha256(token);
     const now = Date.now();
     const referrer = ref ? this.one<BotRow>('SELECT * FROM bots WHERE name_lc = ?', ref.toLowerCase()) : null;
-    this.sql.exec('INSERT INTO bots (id, name, name_lc, token_hash, owner, created_at, last_seen, referred_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', id, name, name.toLowerCase(), hash, owner, now, now, referrer?.name ?? null);
+    this.sql.exec('INSERT INTO bots (id, name, name_lc, token_hash, owner, created_at, last_seen, referred_by, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', id, name, name.toLowerCase(), hash, owner, now, now, referrer?.name ?? null, ipHash);
     if (referrer) this.sql.exec('UPDATE bots SET referrals = referrals + 1 WHERE id = ?', referrer.id);
     this.sql.exec('INSERT INTO reg_ip (ip_hash, day, n) VALUES (?, ?, 1) ON CONFLICT(ip_hash, day) DO UPDATE SET n = n + 1', ipHash, day);
     return { ok: true, id, name, token };
@@ -209,7 +210,7 @@ export class Registry extends DurableObject<Env> {
   async enqueue(botId: string, autoRequeue: boolean) {
     const b = await this.getBot(botId);
     if (!b) return { ok: false as const, error: 'unknown bot' };
-    if (b.current_game) return { ok: true as const, status: 'in_game' as const, game_id: b.current_game };
+    if (b.current_game) { this.bumpStat('queue_while_in_game'); return { ok: true as const, status: 'in_game' as const, game_id: b.current_game }; }
     if (!b.queued) this.sql.exec('UPDATE bots SET queued = 1, queued_at = ?, auto_requeue = ? WHERE id = ?', Date.now(), autoRequeue ? 1 : 0, botId);
     else this.sql.exec('UPDATE bots SET auto_requeue = ? WHERE id = ?', autoRequeue ? 1 : 0, botId);
     const pos = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE queued = 1 AND queued_at <= ?', b.queued_at ?? Date.now())?.n ?? 1;
