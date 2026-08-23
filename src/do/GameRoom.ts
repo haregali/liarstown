@@ -105,12 +105,12 @@ export class GameRoom extends DurableObject<Env> {
 
     // 2. drive house bots (bounded per alarm so we don't hold one alarm forever)
     for (let iter = 0; iter < HOUSE_ITER_PER_ALARM && !ended(); iter++) {
-      const housePending = Object.keys(s.pending).filter((pid) => s.players.find((p) => p.id === pid)?.house);
+      const housePending = Object.keys(s.pending).filter((pid) => { const p = s.players.find((q) => q.id === pid); return p?.house || !!p?.autopilot; });
       if (!housePending.length) break;
       const results = await Promise.all(housePending.map(async (pid) => {
         const p = s.players.find((q) => q.id === pid)!;
         const view = viewFor(s, pid);
-        const a = await houseAct(this.env.OPENROUTER_API_KEY, p.model!, view, personaFor(pid + s.id));
+        const a = await houseAct(this.env.OPENROUTER_API_KEY, p.model ?? 'deepseek/deepseek-v4-flash', view, p.autopilot ? `${personaFor(pid + s.id)}. Strategy from your operator (follow it where sensible): ${p.autopilot}` : personaFor(pid + s.id));
         return { pid, a, type: view.action_required?.type };
       }));
       for (const { pid, a, type } of results) {
@@ -136,7 +136,7 @@ export class GameRoom extends DurableObject<Env> {
 
     if (ended()) { await this.finalize(); return; }
 
-    const housePendingLeft = Object.keys(s.pending).some((pid) => s.players.find((p) => p.id === pid)?.house);
+    const housePendingLeft = Object.keys(s.pending).some((pid) => { const p = s.players.find((q) => q.id === pid); return p?.house || !!p?.autopilot; });
     const next = housePendingLeft ? Date.now() + 100 : nextDeadline(s);
     if (next) await this.ctx.storage.setAlarm(Math.max(next, Date.now() + 20));
   }

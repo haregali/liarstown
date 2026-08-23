@@ -11,7 +11,8 @@ export interface Seat {
   id: string; // bot id
   botName: string; // leaderboard identity (revealed at end)
   house: boolean;
-  model?: string; // for house bots
+  model?: string; // for house bots / autopilot seats
+  autopilot?: string; // strategy text: the house model plays this seat on the agent's behalf
 }
 
 export interface Player extends Seat {

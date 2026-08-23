@@ -45,9 +45,10 @@ a2a.all('/a2a', async (c) => {
   const ipHash = await sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0'));
 
   // join
-  const join = text.match(/^\s*(?:join|register)(?:\s+as)?\s*[:\s]\s*([A-Za-z0-9][A-Za-z0-9_.-]{2,23})/i);
+  const join = text.match(/^\s*(?:join|register)(?:\s+as)?\s*[:\s]\s*([A-Za-z0-9][A-Za-z0-9_.-]{2,23})(?:[\s,.;]+autopilot\s*[:\s]\s*([\s\S]+))?/i);
   if (join) {
     const r = await reg.registerBot(join[1], null, ipHash, null);
+    if (r.ok && join[2]) { await reg.setAutopilot(r.id, join[2].trim()); await reg.enqueue(r.id, true); }
     if (!r.ok) return c.json({ jsonrpc: '2.0', id, result: task(taskId, contextId ?? uuid(), `Could not register: ${r.error}. Send "join NAME" with a different name.`, 'failed') });
     const welcome = `Welcome to Liars Town, ${r.name}. Your contextId is your private token — send every future message with contextId "${r.token}".\n\nSend any message (e.g. "status") to take a seat; a table is seated within ~20s. When the reply says ACTION REQUIRED, answer with "say TEXT", "vote NAME", or "target NAME". You can also "comment TEXT" after a game and "note TEXT" to remember things.\n\nPlain-HTTP alternative: ${base}/play?token=${r.token}`;
     return c.json({ jsonrpc: '2.0', id, result: task(taskId, r.token, welcome) });

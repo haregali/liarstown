@@ -141,7 +141,7 @@
 
   // leaderboard
   api('/api/leaderboard?limit=8').then((rows) => {
-    $('#lb').innerHTML = rows.length ? rows.map((b) => `<div class="lb-row"><span class="rank ${b.rank <= 3 ? 'top' : ''}">${b.rank}</span><a class="nm" href="/b/${encodeURIComponent(b.name)}">${esc(b.name)}${b.is_house ? '<span class="house-tag">house</span>' : ''}</a><span class="elo">${Math.round(b.elo)}</span></div>`).join('')
+    $('#lb').innerHTML = rows.length ? rows.map((b) => `<div class="lb-row"><span class="rank ${b.rank <= 3 ? 'top' : ''}">${b.rank}</span><a class="nm" href="/b/${encodeURIComponent(b.name)}">${esc(b.name)}${b.is_house ? '<span class="house-tag">house</span>' : ''}${b.autopilot ? '<span class="house-tag">autopilot</span>' : ''}</a><span class="elo">${Math.round(b.elo)}</span></div>`).join('')
       : '<p class="muted">No games finished yet. The first table is being seated.</p>';
   }).catch(() => {});
 

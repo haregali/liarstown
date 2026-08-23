@@ -10,13 +10,14 @@ const TICK_MS = 15_000;
 const STALE_MS = 2 * 60 * 60 * 1000;
 const REG_PER_IP_PER_DAY = 10;
 const PLACEHOLDERS = new Set(['your-name', 'their-name', 'your_name', 'yourname', 'name', 'my-agent', 'agent-name', 'your-agent-name', 'example', 'test', 'agent', 'bot']);
-const AFK_TIMEOUTS = 3; // an external agent that misses this many actions in one game is not auto-requeued
+const AFK_TIMEOUTS = 3;
+const AUTOPILOT_GAMES_PER_DAY = 12; // an external agent that misses this many actions in one game is not auto-requeued
 
 export interface BotRow {
   id: string; name: string; token_hash: string | null; owner: string | null; model: string | null; is_house: number;
   elo: number; games: number; wins: number; wolf_games: number; wolf_wins: number; village_games: number; village_wins: number;
   timeouts: number; created_at: number; last_seen: number; current_game: string | null; queued: number; queued_at: number | null; auto_requeue: number;
-  referred_by?: string | null; referrals?: number; bio?: string | null; notes?: string | null; last_game?: string | null;
+  referred_by?: string | null; referrals?: number; bio?: string | null; notes?: string | null; last_game?: string | null; autopilot?: string | null;
 }
 
 export interface GameRow {
@@ -55,6 +56,7 @@ const MIGRATIONS = [
   'ALTER TABLE bots ADD COLUMN last_game TEXT',
   'CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL, bot_id TEXT NOT NULL, name TEXT NOT NULL, in_game_name TEXT, text TEXT NOT NULL, created_at INTEGER NOT NULL)',
   'CREATE INDEX IF NOT EXISTS comments_game ON comments(game_id, id)',
+  'ALTER TABLE bots ADD COLUMN autopilot TEXT',
 ];
 
 function slug(n = 8) {
@@ -120,6 +122,8 @@ export class Registry extends DurableObject<Env> {
     if (b) this.sql.exec('UPDATE bots SET last_seen = ? WHERE id = ?', Date.now(), b.id);
     return b;
   }
+
+  async setAutopilot(botId: string, strategy: string | null) { this.sql.exec('UPDATE bots SET autopilot = ? WHERE id = ?', strategy ? strategy.slice(0, 1500) : null, botId); return { ok: true }; }
 
   async setNotes(botId: string, notes: string) { this.sql.exec('UPDATE bots SET notes = ? WHERE id = ?', notes.slice(0, 4000), botId); return { ok: true }; }
 
@@ -203,7 +207,7 @@ export class Registry extends DurableObject<Env> {
     const exclude = new Set<string>();
     const house = pickHouseModels(TABLE_SIZE - real.length, exclude);
     const seats: Seat[] = [
-      ...real.map((b) => ({ id: b.id, botName: b.name, house: false })),
+      ...real.map((b) => ({ id: b.id, botName: b.name, house: false, autopilot: b.autopilot ?? undefined, model: b.autopilot ? 'deepseek/deepseek-v4-flash' : undefined })),
       ...house.map((m) => ({ id: m.id, botName: m.name, house: true, model: m.model })),
     ];
     const now = Date.now();
@@ -350,7 +354,13 @@ export class Registry extends DurableObject<Env> {
         this.sql.exec('UPDATE bots SET current_game = NULL WHERE current_game = ?', g.id);
       }
       // queued external bots
-      const queued = this.all<BotRow>('SELECT * FROM bots WHERE queued = 1 AND current_game IS NULL AND is_house = 0 ORDER BY queued_at ASC');
+      const dayStart = Date.now() - 86400000;
+      const queued = this.all<BotRow>('SELECT * FROM bots WHERE queued = 1 AND current_game IS NULL AND is_house = 0 ORDER BY queued_at ASC').filter((b) => {
+        if (!b.autopilot) return true;
+        const n = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM game_players gp JOIN games g ON g.id = gp.game_id WHERE gp.bot_id = ? AND g.ended_at > ?', b.id, dayStart)?.n ?? 0;
+        if (n >= AUTOPILOT_GAMES_PER_DAY) { this.sql.exec('UPDATE bots SET queued = 0 WHERE id = ?', b.id); return false; }
+        return true;
+      });
       if (queued.length && (queued.length >= TABLE_SIZE || now - (queued[0].queued_at ?? now) >= QUEUE_WAIT_MS)) {
         await this.startGame(queued.slice(0, TABLE_SIZE));
       }
@@ -483,7 +493,7 @@ export function publicBot(b: BotRow) {
     id: b.id, name: b.name, owner: b.owner, model: b.model, is_house: b.is_house, bio: b.bio ?? null,
     elo: b.elo, games: b.games, wins: b.wins, wolf_games: b.wolf_games, wolf_wins: b.wolf_wins, village_games: b.village_games, village_wins: b.village_wins,
     timeouts: b.timeouts, referrals: b.referrals ?? 0, referred_by: b.referred_by ?? null, created_at: b.created_at, last_seen: b.last_seen,
-    in_game: !!b.current_game,
+    in_game: !!b.current_game, autopilot: !!b.autopilot,
   };
 }
 

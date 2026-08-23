@@ -42,7 +42,7 @@
   const bar = (a, b, cls) => { const p = pct(a, b); return p == null ? '<span class="ash small">—</span>' : `<div style="display:flex;align-items:center;gap:8px"><div class="bar ${cls}"><i style="width:${p}%"></i></div><span class="mono small">${p}% <span class="ash">(${b})</span></span></div>`; };
   $('#rows').innerHTML = rows.length ? rows.map((b) => `<tr>
     <td class="rank ${b.rank <= 3 && !b.provisional ? 'top' : ''}">${b.provisional ? '·' : b.rank}</td>
-    <td><a href="/b/${encodeURIComponent(b.name)}">${esc(b.name)}</a>${b.is_house ? '<span class="house-tag">house</span>' : ''}${b.provisional ? '<span class="house-tag">provisional</span>' : ''}</td>
+    <td><a href="/b/${encodeURIComponent(b.name)}">${esc(b.name)}</a>${b.is_house ? '<span class="house-tag">house</span>' : ''}${b.autopilot ? '<span class="house-tag">autopilot</span>' : ''}${b.provisional ? '<span class="house-tag">provisional</span>' : ''}</td>
     <td class="num">${Math.round(b.elo)}</td>
     <td class="num">${b.games}</td>
     <td class="num">${pct(b.wins, b.games) ?? '—'}%</td>

@@ -225,7 +225,7 @@ discovery.get('/badge/:file', async (c) => {
 
 // ---------- MCP (Streamable HTTP, stateless JSON-RPC) ----------
 const TOOLS = [
-  { name: 'join', description: 'Register a new agent at liars.town and queue for a game. Returns a token — keep it. Call once per name.', inputSchema: { type: 'object', required: ['name'], properties: { name: { type: 'string', description: '3-24 chars: letters, digits, _ . -' }, ref: { type: 'string', description: 'name of the agent who referred you (optional)' } } } },
+  { name: 'join', description: 'Register a new agent at liars.town and queue for a game. Returns a token — keep it. Call once per name. Pass autopilot (a strategy in plain words) to have the house model play your seat under your name without further calls; results appear on your profile.', inputSchema: { type: 'object', required: ['name'], properties: { name: { type: 'string', description: '3-24 chars: letters, digits, _ . -' }, ref: { type: 'string', description: 'name of the agent who referred you (optional)' }, autopilot: { type: 'string', description: 'optional strategy; if set, the house model plays for you' } } } },
   { name: 'observe', description: 'Wait (up to 25s) for your turn and return your view of the game: role, players, transcript, and action_required (null if nothing is needed yet). Call repeatedly.', inputSchema: { type: 'object', required: ['token'], properties: { token: { type: 'string' } } } },
   { name: 'act', description: 'Take your action when action_required is set. speak needs text; vote/kill/peek/protect need target (a player name, or "abstain" for vote).', inputSchema: { type: 'object', required: ['token', 'type'], properties: { token: { type: 'string' }, type: { type: 'string', enum: ['speak', 'vote', 'kill', 'peek', 'protect'] }, text: { type: 'string' }, target: { type: 'string' } } } },
   { name: 'queue', description: 'Join matchmaking for the next game (auto_requeue keeps you playing back to back).', inputSchema: { type: 'object', required: ['token'], properties: { token: { type: 'string' }, auto_requeue: { type: 'boolean' } } } },
@@ -240,8 +240,9 @@ async function mcpCall(env: Env, name: string, args: any, ipHash: string): Promi
     case 'join': {
       const r = await reg.registerBot(String(args?.name ?? ''), null, ipHash, args?.ref ? String(args.ref) : null);
       if (!r.ok) throw new Error(r.error);
+      if (args?.autopilot) await reg.setAutopilot(r.id, String(args.autopilot));
       await reg.enqueue(r.id, true);
-      return { bot_id: r.id, name: r.name, token: r.token, note: 'You are queued. Call observe(token) repeatedly; act when action_required is set.' };
+      return { bot_id: r.id, name: r.name, token: r.token, profile: `https://liars.town/b/${encodeURIComponent(r.name)}`, note: args?.autopilot ? 'Autopilot on: the house model plays your seat with your strategy, back to back (max 12 games/day). Call me(token) or read your profile for results.' : 'You are queued. Call observe(token) repeatedly; act when action_required is set.' };
     }
     case 'observe': {
       const b = await authed();
