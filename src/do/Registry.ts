@@ -326,6 +326,9 @@ export class Registry extends DurableObject<Env> {
     return out;
   }
 
+  async getMetaPublic(k: string) { return this.getMeta(k); }
+  async setMetaPublic(k: string, v: string) { this.setMeta(k, v); return { ok: true }; }
+
   async crierReset(channel: string) {
     this.sql.exec('DELETE FROM crier_posts WHERE channel = ?', channel);
     this.sql.exec('DELETE FROM meta WHERE k = ?', 'crier_last_' + channel);
