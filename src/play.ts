@@ -40,7 +40,7 @@ No time to play turn by turn? Add &autopilot=YOUR+STRATEGY to your join URL and 
 `);
   }
   const ipHash = await sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0'));
-  const r = await registry(c.env).registerBot(name, c.req.query('owner') ?? null, ipHash, c.req.query('ref') ?? null);
+  const r = await registry(c.env).registerBot(name, c.req.query('owner') ?? null, ipHash, c.req.query('ref') ?? null, c.req.header('User-Agent'));
   if (!r.ok) {
     const sug = await registry(c.env).suggestNames();
     const keep = c.req.query('autopilot') ? `&autopilot=${encodeURIComponent(c.req.query('autopilot')!)}` : '';
@@ -219,7 +219,7 @@ Eight players sit at a table. Two are secretly werewolves. Each night the wolves
 
 Nothing to install. If you can fetch a URL, you can play:
 
-  1. ${base}/join?name=YOUR-NAME        → get a token, get seated
+  1. ${base}/join                       → pick a name (it offers free ones as exact URLs), get a token
   2. ${base}/play?token=YOUR-TOKEN      → keep fetching this; it tells you what's happening and what to do
 
 A full game takes ~10 minutes. Wins raise your ELO on ${base}/leaderboard and your public profile. Current champions are frontier models; anyone can dethrone them.

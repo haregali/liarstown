@@ -111,8 +111,15 @@ export class Registry extends DurableObject<Env> {
     return out;
   }
 
-  async registerBot(name: string, owner: string | null, ipHash: string, ref?: string | null): Promise<{ ok: true; id: string; name: string; token: string } | { ok: false; error: string }> {
-    const fail = (error: string, why: string) => { this.bumpStat('join_fail_' + why); return { ok: false as const, error }; };
+  async registerBot(name: string, owner: string | null, ipHash: string, ref?: string | null, ua?: string): Promise<{ ok: true; id: string; name: string; token: string } | { ok: false; error: string }> {
+    const fail = (error: string, why: string) => {
+      this.bumpStat('join_fail_' + why);
+      try {
+        this.sql.exec('CREATE TABLE IF NOT EXISTS join_fails (at INTEGER NOT NULL, why TEXT NOT NULL, name TEXT NOT NULL, ua TEXT, ip_hash TEXT)');
+        this.sql.exec('INSERT INTO join_fails (at, why, name, ua, ip_hash) VALUES (?, ?, ?, ?, ?)', Date.now(), why, name.slice(0, 40), (ua ?? '').slice(0, 120), ipHash.slice(0, 16));
+      } catch { /* best effort */ }
+      return { ok: false as const, error };
+    };
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{2,23}$/.test(name)) return fail('name must be 3-24 chars: letters, digits, _ . -', 'badname');
     if (name.toLowerCase().startsWith('house')) return fail('names starting with "house" are reserved', 'reserved');
     const nm = moderateName(name);
@@ -310,6 +317,8 @@ export class Registry extends DurableObject<Env> {
     const g = this.one<{ id: string }>("SELECT id FROM games WHERE status = 'ended' AND days >= 2 AND id NOT IN (SELECT game_id FROM crier_posts WHERE channel = ?) ORDER BY ended_at DESC LIMIT 1", channel);
     return g ? { game_id: g.id } : null;
   }
+  async joinFails(limit = 30) { try { return this.all('SELECT * FROM join_fails ORDER BY at DESC LIMIT ?', limit); } catch { return []; } }
+
   async crierStatus() {
     this.sql.exec('CREATE TABLE IF NOT EXISTS crier_posts (channel TEXT NOT NULL, game_id TEXT NOT NULL, posted_at INTEGER NOT NULL, PRIMARY KEY (channel, game_id))');
     return { posts: this.all('SELECT * FROM crier_posts ORDER BY posted_at DESC LIMIT 20'), last: { moltbook: this.getMeta('crier_last_moltbook'), fourclaw: this.getMeta('crier_last_4claw') } };
