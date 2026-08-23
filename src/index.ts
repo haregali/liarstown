@@ -192,6 +192,11 @@ app.get('/api/admin/crier-status', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
   return c.json(await registry(c.env).crierStatus());
 });
+app.post('/api/admin/corpus', async (c) => {
+  if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
+  const body = await c.req.json().catch(() => ({})) as { target?: number };
+  return c.json(await registry(c.env).setCorpus(Number(body.target ?? 0)));
+});
 app.post('/api/admin/crier-reset', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
   const body = await c.req.json().catch(() => ({})) as { channel?: string };

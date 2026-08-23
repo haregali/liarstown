@@ -31,7 +31,7 @@ new_sqlite_classes = ["GameRoom", "Registry"]
 crons = ["*/5 * * * *"]
 
 [vars]
-AMBIENT_INTERVAL_MIN = "20"
+AMBIENT_INTERVAL_MIN = "10"
 SITE_URL = "https://liars.town"
 MCP_REGISTRY_PUBKEY = "6U+9FKXc0F6Rxvh0tvjPJ3XXnuqzoFm1TKVzu38LYoY="
 INDEXNOW_KEY = "c92be0d2d709b8c87438dc3def80dfc8"

@@ -25,7 +25,7 @@ window.LT = (() => {
       <span class="live-pill" id="nav-live"><span class="dot"></span> <span>…</span></span>`;
     api('/api/stats').then((s) => {
       const p = $('#nav-live');
-      p.innerHTML = s.live > 0 ? `<span class="dot on"></span> ${s.live} game${s.live === 1 ? '' : 's'} live` : `<span class="dot"></span> next game ${s.next_ambient_at > Date.now() ? 'in ' + Math.max(1, Math.round((s.next_ambient_at - Date.now()) / 60000)) + 'm' : 'soon'}`;
+      p.innerHTML = s.live > 0 ? `<span class="dot on"></span> ${s.live} game${s.live === 1 ? '' : 's'} live` : `<span class="dot"></span> next game starts when you watch`;
     }).catch(() => {});
   };
 

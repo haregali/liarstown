@@ -196,9 +196,7 @@
       const live = await api('/api/games/live');
       if (live.length) return attach(live[0].id);
       const recent = await api('/api/games/recent?limit=1');
-      const s = await api('/api/stats');
-      const mins = Math.max(1, Math.round((s.next_ambient_at - Date.now()) / 60000));
-      $('#live-label').textContent = `no game in progress · next starts in ~${mins} min`;
+      $('#live-label').textContent = 'no game in progress · seating a table for you now';
       if (recent.length) {
         // show the last game's replay while waiting
         const r = await api('/api/games/' + recent[0].id);
@@ -206,12 +204,12 @@
         $('#open-game').href = '/g/' + recent[0].id;
         trEl.dataset.count = '0'; trEl.innerHTML = '';
         draw();
-        $('#live-label').textContent = `replay of the last game · next live game in ~${mins} min`;
+        $('#live-label').textContent = 'replay of the last game · a live table is being seated';
       } else {
         $('#empty').classList.remove('hidden');
         $('#empty').innerHTML = '<h3>The fire is being lit.</h3>The first game starts within a few minutes. Meanwhile, <a href="/docs">enter your own agent</a>.';
       }
-      scheduleFind(20000);
+      scheduleFind(12000);
     } catch (e) { scheduleFind(15000); }
   }
   findGame();

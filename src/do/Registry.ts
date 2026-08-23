@@ -74,6 +74,7 @@ export class Registry extends DurableObject<Env> {
   private pendingVisitors: Set<string> = new Set(); // 'kind|iphash'
   private pendingUas: Map<string, number> = new Map();
   private pendingRefs: Map<string, number> = new Map();
+  private lastBrowserSeen = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -337,6 +338,7 @@ export class Registry extends DurableObject<Env> {
     this.sql.exec('CREATE TABLE IF NOT EXISTS uas (day TEXT NOT NULL, ua TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, ua))');
   }
   async hit(kind: string, cls: string, ipHash: string, ua: string, referer?: string) {
+    if (kind === 'browser') this.lastBrowserSeen = Date.now();
     if (referer) { try { const h = new URL(referer).hostname; if (!h.endsWith('liars.town') && !h.endsWith('workers.dev')) this.pendingRefs.set(h, (this.pendingRefs.get(h) ?? 0) + 1); } catch { /* */ } }
     // in-memory accumulation; flushed by the alarm tick (a few seconds of loss on eviction is fine)
     const k = kind + '|' + cls;
@@ -415,12 +417,21 @@ export class Registry extends DurableObject<Env> {
       if (queued.length && (queued.length >= TABLE_SIZE || now - (queued[0].queued_at ?? now) >= QUEUE_WAIT_MS)) {
         await this.startGame(queued.slice(0, TABLE_SIZE));
       }
-      // ambient house game so spectators always have something to watch
+      // House self-play is demand-driven, never a timer into the void:
+      //  (a) corpus mode: an explicitly budgeted batch for research (admin sets corpus_target)
+      //  (b) a browser is on the site right now and nothing is live (min gap AMBIENT_INTERVAL_MIN, default 10)
       const live = this.one<{ n: number }>("SELECT COUNT(*) AS n FROM games WHERE status = 'live'")?.n ?? 0;
-      const intervalMin = Number(this.env.AMBIENT_INTERVAL_MIN ?? '20') || 20;
       const lastAmbient = Number(this.getMeta('last_ambient') ?? '0');
-      if (live === 0 && now - lastAmbient >= intervalMin * 60_000 && this.env.OPENROUTER_API_KEY) {
-        await this.startGame([], { ambient: true });
+      const corpus = Number(this.getMeta('corpus_target') ?? '0');
+      if (this.env.OPENROUTER_API_KEY) {
+        if (corpus > 0 && live < 2) {
+          await this.startGame([], { ambient: true });
+          this.setMeta('corpus_target', String(corpus - 1));
+        } else if (corpus <= 0) {
+          const gapMin = Number(this.env.AMBIENT_INTERVAL_MIN ?? '10') || 10;
+          const spectatorHere = now - this.lastBrowserSeen < 10 * 60_000;
+          if (live === 0 && spectatorHere && now - lastAmbient >= gapMin * 60_000) await this.startGame([], { ambient: true });
+        }
       }
       // daily puzzle
       this.ensureDaily();
@@ -431,6 +442,8 @@ export class Registry extends DurableObject<Env> {
   }
 
   async ensure() { await this.tick(); return { ok: true }; }
+
+  async setCorpus(target: number) { this.setMeta('corpus_target', String(Math.max(0, Math.floor(target)))); return { ok: true, corpus_target: Math.max(0, Math.floor(target)) }; }
 
   async forceGame() {
     const id = await this.startGame([], { ambient: true });
@@ -479,8 +492,7 @@ export class Registry extends DurableObject<Env> {
     const guesses = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM guesses')?.n ?? 0;
     const joinFails = Object.fromEntries(this.all<{ k: string; v: string }>("SELECT k, v FROM meta WHERE k LIKE 'join_fail_%'").map((r) => [r.k.slice(10), Number(r.v)]));
     const queued = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE queued = 1')?.n ?? 0;
-    const nextAmbient = (Number(this.getMeta('last_ambient') ?? '0') + (Number(this.env.AMBIENT_INTERVAL_MIN ?? '20') || 20) * 60_000);
-    return { games, bots, live, wolf_win_rate: games ? wolfWins / games : null, total_days: speeches, guesses, queued, next_ambient_at: nextAmbient, join_failures: joinFails };
+    return { games, bots, live, wolf_win_rate: games ? wolfWins / games : null, total_days: speeches, guesses, queued, corpus_remaining: Number(this.getMeta('corpus_target') ?? '0'), join_failures: joinFails };
   }
 
   // ---------- Daily puzzle ----------
