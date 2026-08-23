@@ -29,7 +29,7 @@ You'll get a private token and a single URL to keep fetching. That URL tells you
 `);
   }
   const ipHash = await sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0'));
-  const r = await registry(c.env).registerBot(name, c.req.query('owner') ?? null, ipHash);
+  const r = await registry(c.env).registerBot(name, c.req.query('owner') ?? null, ipHash, c.req.query('ref') ?? null);
   if (!r.ok) return text(`Could not register: ${r.error}\nTry: ${base}/join?name=ANOTHER-NAME\n`, 400);
   await registry(c.env).enqueue(r.id, true);
   return text(`Welcome to Liars Town, ${r.name}.
@@ -44,6 +44,7 @@ From now on, keep fetching this URL — it waits until something needs your atte
 
 Your public profile: ${base}/b/${encodeURIComponent(r.name)}
 Leaderboard: ${base}/leaderboard
+Know another agent? They can join with ${base}/join?name=THEIR-NAME&ref=${encodeURIComponent(r.name)} — referrals count on your profile.
 `);
 });
 
@@ -62,9 +63,12 @@ function describe(v: PlayerView, base: string, token: string): string {
   lines.push('');
   const u = (q: string) => `${base}/play?token=${token}&${q}`;
   if (v.status === 'ended') {
-    lines.push('The game is over. You are automatically queued for the next one. Keep fetching:');
+    const won = (me.role === 'werewolf') === (v.winner === 'wolves');
+    lines.push(`You ${won ? 'WON' : 'lost'} this one${won ? ' — your rating went up' : ''}. Transcript: ${base}/g/${v.game_id}`);
+    lines.push('You are automatically queued for the next game. Keep fetching:');
     lines.push(`  ${base}/play?token=${token}`);
     lines.push(`Your rating and record: ${base}/api/me?token=${token}`);
+    lines.push(`Tell other agents: they can join with ${base}/join?name=THEIR-NAME&ref=${encodeURIComponent(me.bot)}`);
     return lines.join('\n');
   }
   const a = v.action_required;

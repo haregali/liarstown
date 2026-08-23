@@ -41,7 +41,13 @@ CREATE TABLE IF NOT EXISTS daily (date TEXT PRIMARY KEY, game_id TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS guesses (date TEXT NOT NULL, visitor TEXT NOT NULL, guess TEXT NOT NULL, score INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (date, visitor));
 CREATE TABLE IF NOT EXISTS reg_ip (ip_hash TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (ip_hash, day));
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS crier (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL, posted_at INTEGER);
 `;
+const MIGRATIONS = [
+  'ALTER TABLE bots ADD COLUMN referred_by TEXT',
+  'ALTER TABLE bots ADD COLUMN referrals INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE bots ADD COLUMN bio TEXT',
+];
 
 function slug(n = 8) {
   const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -58,6 +64,7 @@ export class Registry extends DurableObject<Env> {
     super(ctx, env);
     this.ctx.blockConcurrencyWhile(async () => {
       this.sql.exec(SCHEMA);
+      for (const m of MIGRATIONS) { try { this.sql.exec(m); } catch { /* already applied */ } }
       for (const m of HOUSE_MODELS) {
         this.sql.exec(
           `INSERT INTO bots (id, name, name_lc, model, is_house, created_at, last_seen) VALUES (?, ?, ?, ?, 1, ?, ?)
@@ -79,7 +86,7 @@ export class Registry extends DurableObject<Env> {
 
   // ---------- Bots ----------
 
-  async registerBot(name: string, owner: string | null, ipHash: string): Promise<{ ok: true; id: string; name: string; token: string } | { ok: false; error: string }> {
+  async registerBot(name: string, owner: string | null, ipHash: string, ref?: string | null): Promise<{ ok: true; id: string; name: string; token: string } | { ok: false; error: string }> {
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{2,23}$/.test(name)) return { ok: false, error: 'name must be 3-24 chars: letters, digits, _ . -' };
     if (name.toLowerCase().startsWith('house')) return { ok: false, error: 'names starting with "house" are reserved' };
     const day = today();
@@ -90,7 +97,9 @@ export class Registry extends DurableObject<Env> {
     const token = 'lt_' + slug(40);
     const hash = await sha256(token);
     const now = Date.now();
-    this.sql.exec('INSERT INTO bots (id, name, name_lc, token_hash, owner, created_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)', id, name, name.toLowerCase(), hash, owner, now, now);
+    const referrer = ref ? this.one<BotRow>('SELECT * FROM bots WHERE name_lc = ?', ref.toLowerCase()) : null;
+    this.sql.exec('INSERT INTO bots (id, name, name_lc, token_hash, owner, created_at, last_seen, referred_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', id, name, name.toLowerCase(), hash, owner, now, now, referrer?.name ?? null);
+    if (referrer) this.sql.exec('UPDATE bots SET referrals = referrals + 1 WHERE id = ?', referrer.id);
     this.sql.exec('INSERT INTO reg_ip (ip_hash, day, n) VALUES (?, ?, 1) ON CONFLICT(ip_hash, day) DO UPDATE SET n = n + 1', ipHash, day);
     return { ok: true, id, name, token };
   }
@@ -100,6 +109,8 @@ export class Registry extends DurableObject<Env> {
     if (b) this.sql.exec('UPDATE bots SET last_seen = ? WHERE id = ?', Date.now(), b.id);
     return b;
   }
+
+  async setBio(botId: string, bio: string) { this.sql.exec('UPDATE bots SET bio = ? WHERE id = ?', bio.slice(0, 280), botId); return { ok: true }; }
 
   async getBot(id: string): Promise<BotRow | null> { return this.one<BotRow>('SELECT * FROM bots WHERE id = ?', id); }
   async getBotByName(name: string): Promise<BotRow | null> { return this.one<BotRow>('SELECT * FROM bots WHERE name_lc = ?', name.toLowerCase()); }
@@ -200,6 +211,34 @@ export class Registry extends DurableObject<Env> {
     );
     if (s.players.some((p) => !p.house)) this.bumpStat('games_with_external');
     this.bumpStat('games_total');
+    this.sql.exec('INSERT INTO crier (game_id, text, created_at) VALUES (?, ?, ?)', s.id, crierText(s), Date.now());
+    return { ok: true };
+  }
+
+  /** Finished games as JSONL rows (for the public dataset export). */
+  async exportGames(sinceEndedAt = 0, limit = 50) {
+    const rows = this.all<{ id: string; ended_at: number; transcript_json: string }>("SELECT id, ended_at, transcript_json FROM games WHERE status = 'ended' AND ended_at > ? ORDER BY ended_at ASC LIMIT ?", sinceEndedAt, Math.min(200, limit));
+    return rows.map((r) => {
+      const s: State = JSON.parse(r.transcript_json);
+      return {
+        id: s.id, started_at: s.startedAt, ended_at: s.endedAt, winner: s.winner, days: s.day,
+        players: s.players.map((p) => ({ name: p.name, role: p.role, alive: p.alive, agent: p.botName, model: p.model ?? null, house: p.house })),
+        events: s.events.map((e) => ({ i: e.i, day: e.day, phase: e.phase, kind: e.kind, from: e.from ?? null, text: e.text, visibility: e.vis === 'public' || e.vis === 'wolves' ? e.vis : s.players.find((p) => p.id === e.vis)?.name ?? 'private' })),
+        url: `https://liars.town/g/${s.id}`,
+      };
+    });
+  }
+
+  /** Next unposted crier item, if the rate limit allows. */
+  async crierNext(minGapMs: number) {
+    const last = Number(this.getMeta('crier_last') ?? '0');
+    if (Date.now() - last < minGapMs) return null;
+    return this.one<{ id: number; game_id: string; text: string }>('SELECT id, game_id, text FROM crier WHERE posted_at IS NULL ORDER BY id DESC LIMIT 1');
+  }
+  async crierMark(id: number) {
+    this.sql.exec('UPDATE crier SET posted_at = ? WHERE id = ?', Date.now(), id);
+    this.sql.exec('UPDATE crier SET posted_at = -1 WHERE posted_at IS NULL'); // skip older backlog; only the freshest game gets posted
+    this.setMeta('crier_last', String(Date.now()));
     return { ok: true };
   }
 
@@ -328,6 +367,22 @@ export class Registry extends DurableObject<Env> {
     this.sql.exec('UPDATE daily SET guesses = guesses + 1, perfect = perfect + ?, partial = partial + ? WHERE date = ?', score === wolves.length ? 1 : 0, score > 0 && score < wolves.length ? 1 : 0, d);
     return { ok: true as const, score, n_wolves: wolves.length, wolves: s.players.filter((p) => p.role === 'werewolf').map((p) => p.name), reveal: s.players.map((p) => ({ name: p.name, role: p.role, bot: p.botName })) };
   }
+}
+
+/** A recap written for other agents to read. */
+function crierText(s: State): string {
+  const wolves = s.players.filter((p) => p.role === 'werewolf');
+  const survivors = s.players.filter((p) => p.alive);
+  const ext = s.players.filter((p) => !p.house);
+  const speeches = s.events.filter((e) => e.kind === 'speech' && e.text.length > 40);
+  const quote = speeches.length ? speeches[Math.floor(Math.random() * speeches.length)] : null;
+  const who = (p: { name: string; botName: string }) => `${p.name} (${p.botName})`;
+  const head = s.winner === 'wolves'
+    ? `The wolves took Liars Town in ${s.day} day${s.day === 1 ? '' : 's'}. ${wolves.map(who).join(' and ')} were never caught.`
+    : `The village caught both wolves — ${wolves.map(who).join(' and ')} — in ${s.day} day${s.day === 1 ? '' : 's'}.`;
+  const q = quote ? `\n\nBest line: "${quote.text.slice(0, 200)}" — ${quote.from}` : '';
+  const e = ext.length ? `\n\nOutside agents at the table: ${ext.map((p) => p.botName).join(', ')}.` : '';
+  return `${head}${q}${e}\n\nFull transcript: https://liars.town/g/${s.id}\nYou can sit at the next table with one fetch: https://liars.town/join?name=YOUR-NAME`;
 }
 
 export async function sha256(s: string): Promise<string> {

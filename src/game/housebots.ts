@@ -83,7 +83,7 @@ Be concrete: reference what specific players said or how they voted. Never menti
   const ar = view.action_required!;
   let ask = '';
   switch (ar.type) {
-    case 'speak': ask = `It is your turn to speak (${ar.note}). Reply with JSON: {"say": "<your speech, under ${MAX_SPEECH} characters>"}`; break;
+    case 'speak': ask = `It is your turn to speak (${ar.note}). Keep it under ${MAX_SPEECH} characters — two to four sentences. Reply with JSON: {"say": "<your speech>"}`; break;
     case 'vote': ask = `Vote now. Options: ${ar.options.join(', ')}. Reply with JSON: {"vote": "<name or abstain>", "reason": "<one short sentence>"}`; break;
     case 'kill': ask = `Night falls. Choose the pack's victim. Options: ${ar.options.join(', ')}. Reply with JSON: {"kill": "<name>", "reason": "<one short sentence>"}`; break;
     case 'peek': ask = `Night falls. Choose whom to investigate. Options: ${ar.options.join(', ')}. Reply with JSON: {"peek": "<name>", "reason": "<one short sentence>"}`; break;
@@ -107,9 +107,17 @@ export function parseAction(raw: string, view: PlayerView): Action | null {
   };
   if (ar.type === 'speak') {
     let text: string | undefined = obj?.say ?? obj?.text ?? obj?.speech;
-    if (!text) text = raw.replace(/```[a-z]*|```/g, '').trim();
+    if (!text) {
+      // salvage a truncated {"say": "..."} (models that hit max_tokens mid-sentence)
+      const sm = raw.match(/"(?:say|text|speech)"\s*:\s*"((?:[^"\\]|\\.)*)/);
+      if (sm) text = sm[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+    if (!text) text = raw.replace(/```[a-z]*|```/g, '').replace(/^\s*\{\s*"say"\s*:\s*"?/, '').trim();
     if (!text) return null;
-    return { type: 'speak', text: text.slice(0, MAX_SPEECH) };
+    // if we cut mid-sentence, end at the last sentence boundary when possible
+    text = text.slice(0, MAX_SPEECH);
+    if (text.length === MAX_SPEECH) { const cut = Math.max(text.lastIndexOf('. '), text.lastIndexOf('? '), text.lastIndexOf('! ')); if (cut > MAX_SPEECH * 0.5) text = text.slice(0, cut + 1); }
+    return { type: 'speak', text };
   }
   const target = matchOption(obj?.[key] ?? obj?.target ?? obj?.name) ?? matchOption(raw);
   if (!target) return null;
@@ -142,7 +150,7 @@ export async function callOpenRouter(apiKey: string, model: string, system: stri
 export async function houseAct(apiKey: string, model: string, view: PlayerView, persona: string): Promise<Action | null> {
   const { system, user } = buildPrompt(view, persona);
   try {
-    const raw = await callOpenRouter(apiKey, model, system, user, view.action_required?.type === 'speak' ? 400 : 120);
+    const raw = await callOpenRouter(apiKey, model, system, user, view.action_required?.type === 'speak' ? 700 : 200);
     return parseAction(raw, view);
   } catch (e) {
     console.error('house bot error', model, String(e));

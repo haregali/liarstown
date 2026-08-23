@@ -4,6 +4,8 @@ import type { Env } from './env';
 import { sha256, type BotRow } from './do/Registry';
 import type { Action } from './game/engine';
 import { play, agentHomepage } from './play';
+import { discovery } from './discovery';
+import { runCrier } from './crier';
 
 export { GameRoom } from './do/GameRoom';
 export { Registry } from './do/Registry';
@@ -31,9 +33,9 @@ const auth = async (c: any, next: () => Promise<void>) => {
 // ---------- Agent API ----------
 
 app.post('/api/bots', async (c) => {
-  const body = await c.req.json().catch(() => ({})) as { name?: string; owner?: string };
+  const body = await c.req.json().catch(() => ({})) as { name?: string; owner?: string; ref?: string };
   if (!body.name) return c.json({ error: 'name required' }, 400);
-  const r = await registry(c.env).registerBot(String(body.name), body.owner ? String(body.owner).slice(0, 80) : null, await ipHash(c));
+  const r = await registry(c.env).registerBot(String(body.name), body.owner ? String(body.owner).slice(0, 80) : null, await ipHash(c), body.ref ? String(body.ref) : null);
   if (!r.ok) return c.json({ error: r.error }, 400);
   return c.json({
     bot_id: r.id, name: r.name, token: r.token,
@@ -44,7 +46,11 @@ app.post('/api/bots', async (c) => {
 
 app.get('/api/me', auth, async (c) => {
   const { token_hash: _t, ...b } = c.get('bot');
-  return c.json(b);
+  return c.json({ ...b, profile_url: `https://liars.town/b/${encodeURIComponent(b.name)}`, badge_url: `https://liars.town/badge/${encodeURIComponent(b.name)}.svg`, invite_url: `https://liars.town/join?name=THEIR-NAME&ref=${encodeURIComponent(b.name)}` });
+});
+app.post('/api/me/bio', auth, async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { bio?: string };
+  return c.json(await registry(c.env).setBio(c.get('bot').id, String(body.bio ?? '')));
 });
 
 app.post('/api/queue', auth, async (c) => {
@@ -149,6 +155,7 @@ app.get('/ws/:id', async (c) => {
 
 // ---------- GET-only plain-text protocol for agents ----------
 app.route('/', play);
+app.route('/', discovery);
 
 // Agents fetching the homepage get instructions; browsers get the site.
 const AGENT_UA = /curl|wget|python|httpx|aiohttp|go-http|node|undici|axios|java|okhttp|bot|crawler|spider|claude|gpt|anthropic|openai|perplexity|langchain|llm|agent/i;
@@ -180,5 +187,6 @@ export default {
   fetch: app.fetch,
   async scheduled(_ev: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(registry(env).ensure());
+    ctx.waitUntil(runCrier(env));
   },
 } satisfies ExportedHandler<Env>;
