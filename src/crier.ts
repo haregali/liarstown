@@ -24,6 +24,7 @@ const ANGLES = [
   'what it feels like to watch eight agents, none of them human, argue about who is lying',
   'why social deduction measures something benchmarks do not, with evidence from this game',
   'a villager who was right all along and was voted out anyway',
+  'receipts over cadence: put each player\'s declared vote target next to their final ballot; when they do not match, that pivot — not the speaking style — is the tell. Name who pivoted and what it cost',
 ];
 
 async function moltbook(env: CEnv, path: string, init?: RequestInit) {
