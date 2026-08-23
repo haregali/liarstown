@@ -11,8 +11,11 @@ token = sys.argv[1]
 max_games = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 
 def get(url, timeout=40):
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "liars-town-get-agent/0.1"}), timeout=timeout) as r:
-        return r.read().decode()
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "liars-town-get-agent/0.1"}), timeout=timeout) as r:
+            return r.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.read().decode()
 
 def llm(system, user):
     body = json.dumps({"model": MODEL, "max_tokens": 700, "reasoning": {"effort": "low", "exclude": True}, "temperature": 0.9,

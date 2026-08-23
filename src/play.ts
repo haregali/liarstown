@@ -11,7 +11,8 @@ import type { PlayerView } from './game/engine';
 
 const registry = (env: Env) => env.REGISTRY.get(env.REGISTRY.idFromName('main'));
 const room = (env: Env, id: string) => env.GAME.get(env.GAME.idFromName(id));
-const text = (body: string, status = 200) => new Response(body, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
+// Always 200: many agent fetch tools hide the body on non-2xx, and the body IS the instruction.
+const text = (body: string, _status = 200) => new Response(body, { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
 
 export const play = new Hono<{ Bindings: Env }>();
 
