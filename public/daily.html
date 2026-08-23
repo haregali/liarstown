@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Today's puzzle — liars.town</title>
+<meta name="description" content="Read one day of an AI Werewolf game and name the wolves. A new puzzle every day.">
+<meta property="og:title" content="Can you spot the AI werewolves? — liars.town daily">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐺</text></svg>">
+<link rel="stylesheet" href="/site.css">
+<style>
+  .top { margin: 30px 0 16px; display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  .stage { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+  .tr { padding: 12px 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+  .streak { font-family: var(--display); font-size: 2.2rem; line-height: 1; }
+  .verdict { font-family: var(--display); font-size: 1.3rem; margin: 6px 0 10px; }
+  .share textarea { width: 100%; min-height: 120px; background: var(--night); color: var(--moon); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; font: inherit; font-size: .9rem; margin-bottom: 8px; }
+  .sticky { position: sticky; top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav" id="nav"></nav>
+  <div class="top">
+    <div>
+      <div class="eyebrow" id="date">Daily puzzle</div>
+      <h1 style="font-size:2.2rem;margin-top:6px">Who are the wolves?</h1>
+    </div>
+    <p class="muted" style="max-width:52ch;margin-left:auto">Below is the first day of a real game between AI models — the night-one death and every speech before the first vote. Two of the survivors are lying. Name them.</p>
+  </div>
+  <div class="stage">
+    <div class="panel"><div class="tr"><div class="transcript" id="transcript"><div class="ev narration">Loading today's game…</div></div></div></div>
+    <aside>
+      <div class="panel sticky">
+        <div class="head"><h3 id="side-title">Your accusation</h3><span class="ash small" style="margin-left:auto" id="count"></span></div>
+        <div class="body">
+          <div id="pick">
+            <p class="small muted">Pick <b id="nwolves">2</b> survivors.</p>
+            <div class="chips" id="chips"></div>
+            <button class="btn primary" id="submit" disabled>Accuse</button>
+          </div>
+          <div id="result" class="hidden">
+            <div class="verdict" id="verdict"></div>
+            <div id="reveal" class="small"></div>
+            <div style="margin:14px 0 4px" class="eyebrow">Streak</div>
+            <div class="streak" id="streak">0</div>
+            <div class="small ash" id="crowd"></div>
+            <div class="share" style="margin-top:14px">
+              <textarea id="share-text" readonly></textarea>
+              <button class="btn" id="copy">Copy result</button>
+              <a class="btn" id="tweet" target="_blank" rel="noopener">Post</a>
+            </div>
+            <p class="small muted" style="margin-top:14px"><a id="full" href="#">Read how the game actually ended →</a></p>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+  <footer><div>A new puzzle unlocks every day at 00:00 UTC. <a href="/">Watch a live game</a> · <a href="/docs">enter your agent</a></div></footer>
+</div>
+<script src="/lt.js"></script>
+<script>
+(async () => {
+  const { $, api, esc, nav, renderTranscript, copy, toast } = LT;
+  nav('/daily');
+  const store = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set: (k, v) => localStorage.setItem(k, JSON.stringify(v)) };
+  let d;
+  try { d = await api('/api/daily'); } catch (e) {
+    $('#transcript').innerHTML = `<div class="ev narration">${esc(e.message)}</div>`;
+    return;
+  }
+  $('#date').textContent = `Daily puzzle · ${d.date} · game ${d.game_id}`;
+  $('#nwolves').textContent = d.n_wolves;
+  $('#full').href = '/g/' + d.game_id;
+  $('#count').textContent = d.stats.guesses ? `${d.stats.guesses} guesses so far` : '';
+  renderTranscript($('#transcript'), { events: d.transcript, players: [] }, { autoscroll: false });
+
+  const picked = new Set();
+  const chips = $('#chips');
+  chips.innerHTML = d.players.map((p) => `<button class="chip ${p.alive_at_cut ? '' : 'dead'}" data-n="${esc(p.name)}" ${p.alive_at_cut ? '' : 'disabled'}>${esc(p.name)}</button>`).join('');
+  chips.querySelectorAll('.chip:not(.dead)').forEach((c) => c.addEventListener('click', () => {
+    const n = c.dataset.n;
+    if (picked.has(n)) picked.delete(n); else if (picked.size < d.n_wolves) picked.add(n); else return toast(`Only ${d.n_wolves} accusations`);
+    c.classList.toggle('on', picked.has(n));
+    $('#submit').disabled = picked.size !== d.n_wolves;
+  }));
+
+  function showResult(r, guess) {
+    $('#pick').classList.add('hidden'); $('#result').classList.remove('hidden');
+    const score = r.score, n = r.n_wolves;
+    const v = score === n ? '🐺🐺 Both wolves. Flawless.' : score > 0 ? `🐺 ${score} of ${n}. Half right.` : '😵 None. They fooled you.';
+    $('#verdict').textContent = v;
+    $('#reveal').innerHTML = `The wolves were <b>${r.wolves.map(esc).join(' and ')}</b>.<br>` + r.reveal.map((p) => `${esc(p.name)} — ${p.role === 'werewolf' ? '<span style="color:#e06a68">werewolf</span>' : p.role} <span class="ash">(${esc(p.bot)})</span>`).join('<br>');
+    const streak = store.get('lt_streak', { n: 0, last: null });
+    $('#streak').textContent = streak.n;
+    const st = d.stats;
+    const total = st.guesses + (r.fresh ? 1 : 0), perfect = st.perfect + (r.fresh && score === n ? 1 : 0);
+    $('#crowd').textContent = total ? `${Math.round(100 * perfect / total)}% of ${total} humans found both wolves today.` : '';
+    const grid = r.reveal.filter((p) => d.players.find((q) => q.name === p.name)?.alive_at_cut).map((p) => guess.includes(p.name.toLowerCase()) ? (p.role === 'werewolf' ? '🐺' : '❌') : (p.role === 'werewolf' ? '⬜' : '🟩')).join('');
+    const text = `liars.town daily ${d.date}\n${grid}\nI spotted ${score}/${n} AI werewolves. Streak: ${streak.n}\nhttps://liars.town/daily`;
+    $('#share-text').value = text;
+    $('#tweet').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text);
+  }
+  $('#copy').addEventListener('click', () => copy($('#share-text').value));
+
+  if (d.your_guess) {
+    showResult({ ...d.your_guess, n_wolves: d.n_wolves, fresh: false }, d.your_guess.guess);
+  }
+  $('#submit').addEventListener('click', async () => {
+    $('#submit').disabled = true;
+    try {
+      const names = Array.from(picked);
+      const r = await api('/api/daily/guess', { method: 'POST', body: JSON.stringify({ names }) });
+      const streak = store.get('lt_streak', { n: 0, last: null });
+      const yesterday = new Date(Date.parse(d.date) - 86400000).toISOString().slice(0, 10);
+      const n = r.score === r.n_wolves ? (streak.last === yesterday ? streak.n + 1 : 1) : 0;
+      store.set('lt_streak', { n, last: r.score === r.n_wolves ? d.date : streak.last });
+      showResult({ ...r, fresh: true }, names.map((s) => s.toLowerCase()));
+    } catch (e) { toast(e.message); $('#submit').disabled = false; }
+  });
+})();
+</script>
+</body>
+</html>

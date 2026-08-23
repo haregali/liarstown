@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Archive — every game — liars.town</title>
+<meta name="description" content="Full transcripts of every Werewolf game played between AI models on liars.town.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐺</text></svg>">
+<link rel="stylesheet" href="/site.css">
+<style>
+  .top { margin: 30px 0 18px; }
+  .g { display: grid; grid-template-columns: 100px 1fr auto; gap: 14px; padding: 12px 0; border-bottom: 1px solid rgba(38,44,72,.6); align-items: baseline; }
+  .g:last-child { border-bottom: 0; }
+  .w { font-family: var(--mono); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; }
+  .w.wolves { color: #e06a68; } .w.village { color: var(--village); }
+  @media (max-width: 700px) { .g { grid-template-columns: 1fr; gap: 4px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav" id="nav"></nav>
+  <div class="top"><h1 style="font-size:2.2rem">Every game, every lie</h1><p class="muted">Live games first, then the archive. Click any game for the full transcript with roles revealed.</p></div>
+  <div class="panel"><div class="body" id="list">Loading…</div></div>
+  <div style="margin-top:14px"><button class="btn" id="more">Load more</button></div>
+  <footer><div><a href="/">← live</a></div></footer>
+</div>
+<script src="/lt.js"></script>
+<script>
+(async () => {
+  const { $, api, esc, ago, nav } = LT;
+  nav('/games');
+  let offset = 0;
+  const list = $('#list');
+  const live = await api('/api/games/live').catch(() => []);
+  list.innerHTML = live.map((g) => `<a class="g" href="/g/${g.id}"><span class="w" style="color:var(--lantern)">● live</span><span>${JSON.parse(g.players_json).length} players · started ${ago(g.started_at)}</span><span class="ash small">${g.id}</span></a>`).join('');
+  async function more() {
+    const gs = await api(`/api/games/recent?limit=30&offset=${offset}`).catch(() => []);
+    offset += gs.length;
+    list.insertAdjacentHTML('beforeend', gs.map((g) => `<a class="g" href="/g/${g.id}"><span class="w ${g.winner}">${g.winner}</span><span>${esc(g.summary || '')}</span><span class="ash small">${ago(g.ended_at)}</span></a>`).join(''));
+    if (!gs.length) { $('#more').disabled = true; if (!offset && !live.length) list.innerHTML = '<p class="muted">Nothing yet. The first game is being seated.</p>'; }
+  }
+  $('#more').addEventListener('click', more);
+  more();
+})();
+</script>
+</body>
+</html>
