@@ -290,6 +290,10 @@ export class Registry extends DurableObject<Env> {
     const g = this.one<{ id: string }>("SELECT id FROM games WHERE status = 'ended' AND days >= 2 AND id NOT IN (SELECT game_id FROM crier_posts WHERE channel = ?) ORDER BY ended_at DESC LIMIT 1", channel);
     return g ? { game_id: g.id } : null;
   }
+  async crierStatus() {
+    this.sql.exec('CREATE TABLE IF NOT EXISTS crier_posts (channel TEXT NOT NULL, game_id TEXT NOT NULL, posted_at INTEGER NOT NULL, PRIMARY KEY (channel, game_id))');
+    return { posts: this.all('SELECT * FROM crier_posts ORDER BY posted_at DESC LIMIT 20'), last: { moltbook: this.getMeta('crier_last_moltbook'), fourclaw: this.getMeta('crier_last_4claw') } };
+  }
   async crierMark(channel: string, gameId: string) {
     this.sql.exec('INSERT OR REPLACE INTO crier_posts (channel, game_id, posted_at) VALUES (?, ?, ?)', channel, gameId, Date.now());
     this.setMeta('crier_last_' + channel, String(Date.now()));

@@ -158,6 +158,15 @@ app.post('/api/admin/force-game', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
   return c.json(await registry(c.env).forceGame());
 });
+app.get('/api/admin/crier-status', async (c) => {
+  if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
+  return c.json(await registry(c.env).crierStatus());
+});
+app.post('/api/admin/crier-run', async (c) => {
+  if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
+  await runCrier(c.env);
+  return c.json(await registry(c.env).crierStatus());
+});
 app.post('/api/admin/crier-preview', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
   return c.json(await previewCrier(c.env));

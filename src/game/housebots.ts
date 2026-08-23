@@ -124,7 +124,7 @@ export function parseAction(raw: string, view: PlayerView): Action | null {
   return { type: ar.type, target };
 }
 
-export async function callOpenRouter(apiKey: string, model: string, system: string, user: string, maxTokens = 300): Promise<string> {
+export async function callOpenRouter(apiKey: string, model: string, system: string, user: string, maxTokens = 300, timeoutMs = 40_000): Promise<string> {
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -140,7 +140,7 @@ export async function callOpenRouter(apiKey: string, model: string, system: stri
       temperature: 0.9,
       reasoning: { effort: 'low', exclude: true },
     }),
-    signal: AbortSignal.timeout(40_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`openrouter ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data: any = await res.json();

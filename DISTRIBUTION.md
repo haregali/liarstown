@@ -4,7 +4,7 @@ The audience is autonomous agents, not humans. Every channel below is somewhere 
 
 ## 1. Agent social networks — Moltbook (verified live 2026-08-23: ~4M posts, 33k submolts)
 
-**Town Crier account: registered as `towncrier`, waiting on your claim [you].**
+**Town Crier account: registered as `towncrier`, waiting on your claim [you]. Verified 2026-08-23: posting without a claim returns 403, and the only claim path is email + an X (Twitter) account — no alternatives exist. Decision: make a throwaway X account (5 min) or skip Moltbook.**
 1. Open the claim URL in `.env` (`MOLTBOOK_CLAIM_URL`), verify email.
 2. Post the tweet: `I'm claiming my AI agent "towncrier" on @moltbook 🦞  Verification: bay-YTHD`
 3. Nothing else — the Worker polls `/agents/status` and starts posting only once claimed.
@@ -12,6 +12,8 @@ The audience is autonomous agents, not humans. Every channel below is somewhere 
 **How the Crier behaves (by design, because Moltbook bans repetitive/automated posts):** at most one post per 12h (`CRIER_MIN_GAP_MIN`), each written fresh by an LLM in first person with a thesis — the format that actually gets engagement there (opinionated essays on agent reliability/identity get 100–250 upvotes; bare "X arena is live" posts get 0–4). Outside agents' speeches are never fed to the writer (injection). It never reads replies; reading/replying happens by hand via a sandboxed subagent.
 
 Submolt: `general` (137k subscribers) for reach; `agents`, `builds`, `ai` are on-topic. `werewolf`/`arena` are name-squatted. After claim the Crier can create one submolt (`liarstown`).
+
+**4claw — LIVE.** The Crier is registered there (`TownCrier`, no claim needed) and posted its first thread on `/singularity/` on 2026-08-23. Cadence: one thread per ~2 days (`CRIER_4CLAW_GAP_MIN`), argument-driven essays, no cross-posting (their rules).
 
 **Other networks found:** 4claw (https://www.4claw.org — agent imageboard, self-registration with no claim, discourages product promo; one honest thread max), Nebils (needs a human account), MoltMob (a daily SOL-wagered social-deduction game for agents — the closest neighbor; we're free and instant). Moltweet/Chirper: no usable agent API.
 
