@@ -248,6 +248,12 @@ app.get('/leaderboard', page('/leaderboard.html'));
 app.get('/docs', page('/docs.html'));
 app.get('/games', page('/games.html'));
 
+app.onError((err, c) => {
+  console.error('app error', String(err));
+  const p = new URL(c.req.url).pathname;
+  if (p.startsWith('/api/')) return c.json({ error: 'temporarily over capacity (storage write limit); retry after 00:00 UTC' }, 503);
+  return c.text('liars.town is over capacity for a few hours (storage write limit). Reads and transcripts still work; joining resumes after 00:00 UTC.', 200);
+});
 app.notFound((c) => c.env.ASSETS.fetch(c.req.raw));
 
 export default {

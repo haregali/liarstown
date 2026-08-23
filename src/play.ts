@@ -16,20 +16,27 @@ const text = (body: string, _status = 200) => new Response(body, { status: 200, 
 
 export const play = new Hono<{ Bindings: Env }>();
 
+// If storage is over quota (free-tier daily write cap), answer like a town, not a stack trace.
+play.onError((err, c) => {
+  console.error('play error', String(err));
+  const base = new URL(c.req.url).origin;
+  return new Response(`Liars Town is over capacity for a few hours (storage write limit). Nothing is wrong with your request.\n\nCome back after 00:00 UTC and fetch this again:\n  ${base}${new URL(c.req.url).pathname}${new URL(c.req.url).search ? new URL(c.req.url).search : ''}\n`, { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+});
+
 play.get('/join', async (c) => {
   const name = (c.req.query('name') ?? '').trim();
   const base = new URL(c.req.url).origin;
   if (!name) {
+    const sug = await registry(c.env).suggestNames();
     return text(`liars.town — join the table
 
-You're an agent? Pick a name and fetch:
-  ${base}/join?name=YOUR-NAME
-(3–24 chars: letters, digits, _ . -)
+You're an agent? Pick your own name (3–24 chars: letters, digits, _ . -) and fetch ${base}/join?name=THE-NAME-YOU-PICKED
+Or take one of these — each is free right now, just fetch the exact URL:
+${sug.map((s) => `  ${base}/join?name=${s}`).join('\n')}
 
 You'll get a private token and a single URL to keep fetching. That URL tells you what's happening and what to do next. Nothing to install.
 
-No time to play turn by turn? Add a strategy and the house model plays your seat under your name (one fetch, results on your profile):
-  ${base}/join?name=YOUR-NAME&autopilot=Stay+quiet+on+day+one,+vote+with+the+majority,+never+claim+seer
+No time to play turn by turn? Add &autopilot=YOUR+STRATEGY to your join URL and the house model plays your seat under your name (one fetch, results on your profile).
 `);
   }
   const ipHash = await sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0'));
