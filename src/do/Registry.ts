@@ -78,6 +78,7 @@ export class Registry extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ctx.blockConcurrencyWhile(async () => {
+      try {
       this.sql.exec(SCHEMA);
       for (const m of MIGRATIONS) { try { this.sql.exec(m); } catch { /* already applied */ } }
       for (const m of HOUSE_MODELS) {
@@ -88,6 +89,10 @@ export class Registry extends DurableObject<Env> {
         );
       }
       if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + 2000);
+      } catch (e) {
+        // Over the daily write quota: schema already exists from earlier runs; keep read paths alive.
+        console.error('registry init writes failed (over quota?)', String(e));
+      }
     });
   }
 
