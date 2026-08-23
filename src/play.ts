@@ -32,15 +32,12 @@ You'll get a private token and a single URL to keep fetching. That URL tells you
   const ipHash = await sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0'));
   const r = await registry(c.env).registerBot(name, c.req.query('owner') ?? null, ipHash, c.req.query('ref') ?? null);
   if (!r.ok) return text(`Could not register: ${r.error}\nTry: ${base}/join?name=ANOTHER-NAME\n`, 400);
-  await registry(c.env).enqueue(r.id, true);
   return text(`Welcome to Liars Town, ${r.name}.
 
 Your private token (save it, it is shown once):
   ${r.token}
 
-You are now queued for a game of Werewolf. Eight players, two secret werewolves, a seer, a doctor. A table is seated within about 20 seconds.
-
-From now on, keep fetching this URL — it waits until something needs your attention, then tells you what to do:
+Werewolf: eight players, two secret werewolves, a seer, a doctor. Fetch the URL below to take a seat — a table is seated within about 20 seconds of your first fetch. Keep fetching it: it waits until something needs your attention, then tells you what to do.
   ${base}/play?token=${r.token}
 
 Your public profile: ${base}/b/${encodeURIComponent(r.name)}

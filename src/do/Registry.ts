@@ -9,6 +9,8 @@ const QUEUE_WAIT_MS = 20_000;
 const TICK_MS = 15_000;
 const STALE_MS = 2 * 60 * 60 * 1000;
 const REG_PER_IP_PER_DAY = 10;
+const PLACEHOLDERS = new Set(['your-name', 'their-name', 'your_name', 'yourname', 'name', 'my-agent', 'agent-name', 'your-agent-name', 'example', 'test', 'agent', 'bot']);
+const AFK_TIMEOUTS = 3; // an external agent that misses this many actions in one game is not auto-requeued
 
 export interface BotRow {
   id: string; name: string; token_hash: string | null; owner: string | null; model: string | null; is_house: number;
@@ -97,6 +99,7 @@ export class Registry extends DurableObject<Env> {
     if (name.toLowerCase().startsWith('house')) return { ok: false, error: 'names starting with "house" are reserved' };
     const nm = moderateName(name);
     if (!nm.ok) return { ok: false, error: `name rejected: ${nm.reason}` };
+    if (PLACEHOLDERS.has(name.toLowerCase())) return { ok: false, error: `"${name}" is the placeholder from the docs — choose your own name` };
     const day = today();
     const ip = this.one<{ n: number }>('SELECT n FROM reg_ip WHERE ip_hash = ? AND day = ?', ipHash, day);
     if ((ip?.n ?? 0) >= REG_PER_IP_PER_DAY) return { ok: false, error: 'registration limit reached for today' };
@@ -242,11 +245,12 @@ export class Registry extends DurableObject<Env> {
       this.sql.exec(
         `UPDATE bots SET elo = ?, games = games + 1, wins = wins + ?, wolf_games = wolf_games + ?, wolf_wins = wolf_wins + ?,
          village_games = village_games + ?, village_wins = village_wins + ?, timeouts = timeouts + ?, current_game = NULL,
-         queued = CASE WHEN auto_requeue = 1 AND is_house = 0 THEN 1 ELSE 0 END, queued_at = CASE WHEN auto_requeue = 1 AND is_house = 0 THEN ? ELSE queued_at END,
+         auto_requeue = CASE WHEN ? >= ${AFK_TIMEOUTS} THEN 0 ELSE auto_requeue END,
+         queued = CASE WHEN auto_requeue = 1 AND is_house = 0 AND ? < ${AFK_TIMEOUTS} THEN 1 ELSE 0 END, queued_at = CASE WHEN auto_requeue = 1 AND is_house = 0 THEN ? ELSE queued_at END,
          last_game = ?
          WHERE id = ?`,
         after, won, team === 'wolves' ? 1 : 0, team === 'wolves' ? won : 0, team === 'village' ? 1 : 0, team === 'village' ? won : 0,
-        p.timeouts, Date.now(), s.id, p.id,
+        p.timeouts, p.timeouts, p.timeouts, Date.now(), s.id, p.id,
       );
       this.sql.exec('INSERT OR REPLACE INTO game_players (game_id, bot_id, name, role, survived, won, elo_before, elo_after) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         s.id, p.id, p.name, p.role, p.alive ? 1 : 0, won, before, after);
@@ -336,7 +340,7 @@ export class Registry extends DurableObject<Env> {
   // ---------- Read APIs ----------
 
   async leaderboard(limit = 50) {
-    const rows = this.all<BotRow>('SELECT * FROM bots WHERE games > 0 ORDER BY (CASE WHEN games >= 3 THEN 0 ELSE 1 END), elo DESC LIMIT ?', limit);
+    const rows = this.all<BotRow>('SELECT * FROM bots WHERE games > 0 AND (is_house = 1 OR token_hash IS NOT NULL) ORDER BY (CASE WHEN games >= 3 THEN 0 ELSE 1 END), elo DESC LIMIT ?', limit);
     return rows.map((b, i) => ({ rank: i + 1, ...publicBot(b), provisional: b.games < 3 }));
   }
 
@@ -357,7 +361,7 @@ export class Registry extends DurableObject<Env> {
 
   async stats() {
     const games = this.one<{ n: number }>("SELECT COUNT(*) AS n FROM games WHERE status = 'ended'")?.n ?? 0;
-    const bots = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE is_house = 0')?.n ?? 0;
+    const bots = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE is_house = 0 AND token_hash IS NOT NULL')?.n ?? 0;
     const live = this.one<{ n: number }>("SELECT COUNT(*) AS n FROM games WHERE status = 'live'")?.n ?? 0;
     const wolfWins = this.one<{ n: number }>("SELECT COUNT(*) AS n FROM games WHERE status = 'ended' AND winner = 'wolves'")?.n ?? 0;
     const speeches = this.one<{ n: number }>('SELECT COALESCE(SUM(days), 0) AS n FROM games WHERE status = \'ended\'')?.n ?? 0;
