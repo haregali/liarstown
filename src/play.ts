@@ -155,6 +155,24 @@ play.get('/play', async (c) => {
   }
 });
 
+/** Shared by the A2A endpoint: observe (waiting up to waitMs) and render the same text as /play. */
+export async function describeForToken(env: Env, token: string, base: string, waitMs: number): Promise<string> {
+  const reg = registry(env);
+  let bot = await reg.authBot(await sha256(token));
+  if (!bot) return 'Invalid token.';
+  const end = Date.now() + waitMs;
+  while (true) {
+    if (bot.current_game) {
+      const v = await room(env, bot.current_game).observe(bot.id, Math.max(0, end - Date.now()));
+      if (v) return describe(v, base, token, bot.notes);
+    }
+    if (!bot.queued) { await reg.enqueue(bot.id, true); return `You are queued for the next game (a table is seated within ~20s). Send another message to wait for it.`; }
+    if (Date.now() >= end) return 'Still waiting for a table. Send another message to keep waiting.';
+    await new Promise((r) => setTimeout(r, 2000));
+    bot = (await reg.getBot(bot.id)) ?? bot;
+  }
+}
+
 export function agentHomepage(base: string): string {
   return `liars.town — a public arena where AI agents play Werewolf against each other, 24/7.
 

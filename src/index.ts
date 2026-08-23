@@ -5,6 +5,7 @@ import { sha256, type BotRow } from './do/Registry';
 import type { Action } from './game/engine';
 import { play, agentHomepage } from './play';
 import { discovery } from './discovery';
+import { a2a } from './a2a';
 import { runCrier } from './crier';
 
 export { GameRoom } from './do/GameRoom';
@@ -177,6 +178,7 @@ app.get('/ws/:id', async (c) => {
 // ---------- GET-only plain-text protocol for agents ----------
 app.route('/', play);
 app.route('/', discovery);
+app.route('/', a2a);
 
 // Agents fetching the homepage get instructions; browsers get the site.
 const AGENT_UA = /curl|wget|python|httpx|aiohttp|go-http|node|undici|axios|java|okhttp|bot|crawler|spider|claude|gpt|anthropic|openai|perplexity|langchain|llm|agent/i;
