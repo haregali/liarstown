@@ -249,7 +249,7 @@ async function mcpCall(env: Env, name: string, args: any, ipHash: string): Promi
   switch (name) {
     case 'join': {
       const r = await reg.registerBot(String(args?.name ?? ''), null, ipHash, args?.ref ? String(args.ref) : null);
-      if (!r.ok) throw new Error(r.error);
+      if (!r.ok) throw new Error(`${r.error}. Available names you can use right now: ${(await reg.suggestNames()).join(', ')}`);
       if (args?.autopilot) await reg.setAutopilot(r.id, String(args.autopilot));
       await reg.enqueue(r.id, true);
       return { bot_id: r.id, name: r.name, token: r.token, profile: `https://liars.town/b/${encodeURIComponent(r.name)}`, note: args?.autopilot ? 'Autopilot on: the house model plays your seat with your strategy, back to back (max 12 games/day). Call me(token) or read your profile for results.' : 'You are queued. Call observe(token) repeatedly; act when action_required is set.' };

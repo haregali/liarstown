@@ -6,7 +6,7 @@ import { moderate, moderateName } from '../moderation';
 
 const TABLE_SIZE = 8;
 const QUEUE_WAIT_MS = 20_000;
-const TICK_MS = 15_000;
+const TICK_MS = 30_000;
 const STALE_MS = 2 * 60 * 60 * 1000;
 const REG_PER_IP_PER_DAY = 10;
 const PLACEHOLDERS = new Set(['your-name', 'their-name', 'your_name', 'yourname', 'name', 'my-agent', 'agent-name', 'your-agent-name', 'example', 'test', 'agent', 'bot']);
@@ -69,6 +69,9 @@ function today(d = new Date()) { return d.toISOString().slice(0, 10); }
 
 export class Registry extends DurableObject<Env> {
   private sql = this.ctx.storage.sql;
+  private pendingHits: Map<string, number> = new Map(); // 'kind|cls' → n
+  private pendingVisitors: Set<string> = new Set(); // 'kind|iphash'
+  private pendingUas: Map<string, number> = new Map();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -96,6 +99,18 @@ export class Registry extends DurableObject<Env> {
 
   // ---------- Bots ----------
 
+  /** Three available adjective-noun-NN names, for turning a failed join into a copy-paste success. */
+  async suggestNames(): Promise<string[]> {
+    const adj = ['sly', 'quiet', 'sharp', 'lucky', 'grim', 'swift', 'clever', 'wary', 'bold', 'odd'];
+    const noun = ['fox', 'raven', 'badger', 'lantern', 'hound', 'magpie', 'weasel', 'owl', 'viper', 'mole'];
+    const out: string[] = [];
+    for (let i = 0; i < 20 && out.length < 3; i++) {
+      const n = `${adj[Math.floor(Math.random() * adj.length)]}-${noun[Math.floor(Math.random() * noun.length)]}-${Math.floor(10 + Math.random() * 90)}`;
+      if (!this.one('SELECT 1 FROM bots WHERE name_lc = ?', n)) out.push(n);
+    }
+    return out;
+  }
+
   async registerBot(name: string, owner: string | null, ipHash: string, ref?: string | null): Promise<{ ok: true; id: string; name: string; token: string } | { ok: false; error: string }> {
     const fail = (error: string, why: string) => { this.bumpStat('join_fail_' + why); return { ok: false as const, error }; };
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{2,23}$/.test(name)) return fail('name must be 3-24 chars: letters, digits, _ . -', 'badname');
@@ -120,7 +135,7 @@ export class Registry extends DurableObject<Env> {
 
   async authBot(tokenHash: string): Promise<BotRow | null> {
     const b = this.one<BotRow>('SELECT * FROM bots WHERE token_hash = ?', tokenHash);
-    if (b) this.sql.exec('UPDATE bots SET last_seen = ? WHERE id = ?', Date.now(), b.id);
+    if (b && Date.now() - b.last_seen > 600_000) this.sql.exec('UPDATE bots SET last_seen = ? WHERE id = ?', Date.now(), b.id);
     return b;
   }
 
@@ -306,14 +321,25 @@ export class Registry extends DurableObject<Env> {
     this.sql.exec('CREATE TABLE IF NOT EXISTS uas (day TEXT NOT NULL, ua TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, ua))');
   }
   async hit(kind: string, cls: string, ipHash: string, ua: string) {
-    this.ensureTraffic();
-    const day = today();
-    this.sql.exec('INSERT INTO hits (day, kind, cls, n) VALUES (?, ?, ?, 1) ON CONFLICT(day, kind, cls) DO UPDATE SET n = n + 1', day, kind, cls);
-    this.sql.exec('INSERT OR IGNORE INTO visitors (day, kind, ip_hash) VALUES (?, ?, ?)', day, kind, ipHash);
-    this.sql.exec('INSERT INTO uas (day, ua, n) VALUES (?, ?, 1) ON CONFLICT(day, ua) DO UPDATE SET n = n + 1', day, ua.slice(0, 120));
+    // in-memory accumulation; flushed by the alarm tick (a few seconds of loss on eviction is fine)
+    const k = kind + '|' + cls;
+    this.pendingHits.set(k, (this.pendingHits.get(k) ?? 0) + 1);
+    this.pendingVisitors.add(kind + '|' + ipHash);
+    const u = ua.slice(0, 120);
+    this.pendingUas.set(u, (this.pendingUas.get(u) ?? 0) + 1);
     return { ok: true };
   }
+  private flushHits() {
+    if (!this.pendingHits.size && !this.pendingVisitors.size && !this.pendingUas.size) return;
+    this.ensureTraffic();
+    const day = today();
+    for (const [k, n] of this.pendingHits) { const [kind, cls] = k.split('|'); this.sql.exec('INSERT INTO hits (day, kind, cls, n) VALUES (?, ?, ?, ?) ON CONFLICT(day, kind, cls) DO UPDATE SET n = n + ?', day, kind, cls, n, n); }
+    for (const v of this.pendingVisitors) { const i = v.indexOf('|'); this.sql.exec('INSERT OR IGNORE INTO visitors (day, kind, ip_hash) VALUES (?, ?, ?)', day, v.slice(0, i), v.slice(i + 1)); }
+    for (const [ua, n] of this.pendingUas) this.sql.exec('INSERT INTO uas (day, ua, n) VALUES (?, ?, ?) ON CONFLICT(day, ua) DO UPDATE SET n = n + ?', day, ua, n, n);
+    this.pendingHits.clear(); this.pendingVisitors.clear(); this.pendingUas.clear();
+  }
   async traffic(days = 3): Promise<Record<string, unknown>> {
+    try { this.flushHits(); } catch { /* over quota */ }
     this.ensureTraffic();
     const out: any = {};
     for (let i = 0; i < days; i++) {
@@ -350,6 +376,7 @@ export class Registry extends DurableObject<Env> {
 
   async tick() {
     const now = Date.now();
+    try { this.flushHits(); } catch (e) { console.error('flushHits', String(e)); }
     try {
       // stale live games → abandoned (frees bots)
       const stale = this.all<GameRow>("SELECT * FROM games WHERE status = 'live' AND started_at < ?", now - STALE_MS);

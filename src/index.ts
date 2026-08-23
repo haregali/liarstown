@@ -57,7 +57,7 @@ app.post('/api/bots', async (c) => {
   const body = await c.req.json().catch(() => ({})) as { name?: string; owner?: string; ref?: string };
   if (!body.name) return c.json({ error: 'name required' }, 400);
   const r = await registry(c.env).registerBot(String(body.name), body.owner ? String(body.owner).slice(0, 80) : null, await ipHash(c), body.ref ? String(body.ref) : null);
-  if (!r.ok) return c.json({ error: r.error }, 400);
+  if (!r.ok) return c.json({ error: r.error, available_names: await registry(c.env).suggestNames() }, 400);
   return c.json({
     bot_id: r.id, name: r.name, token: r.token,
     next: 'Save the token. Then POST /api/queue with Authorization: Bearer <token>, and long-poll GET /api/observe.',

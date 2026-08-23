@@ -13,6 +13,8 @@ export class GameRoom extends DurableObject<Env> {
   private loaded = false;
   private finalized = false;
   private waiters: Array<() => void> = [];
+  private dirty = false;
+  private lastSave = 0;
 
   private async load(): Promise<State | null> {
     if (!this.loaded) {
@@ -23,8 +25,13 @@ export class GameRoom extends DurableObject<Env> {
     return this.s;
   }
 
-  private async save() {
-    if (this.s) await this.ctx.storage.put('state', this.s);
+  private async save(force = false) {
+    if (!this.s) return;
+    this.dirty = true;
+    if (!force && Date.now() - this.lastSave < 4000 && this.s.phase !== 'ended') return;
+    await this.ctx.storage.put('state', this.s);
+    this.dirty = false;
+    this.lastSave = Date.now();
   }
 
   private audience() {
@@ -55,7 +62,7 @@ export class GameRoom extends DurableObject<Env> {
     await this.load();
     if (this.s) return { ok: false, error: 'already started' };
     this.s = createGame(id, seats, opts);
-    await this.save();
+    await this.save(true);
     await this.ctx.storage.setAlarm(Date.now() + 50);
     this.notify();
     return { ok: true };
@@ -136,6 +143,7 @@ export class GameRoom extends DurableObject<Env> {
 
     if (ended()) { await this.finalize(); return; }
 
+    if (this.dirty) await this.save(true);
     const housePendingLeft = Object.keys(s.pending).some((pid) => { const p = s.players.find((q) => q.id === pid); return p?.house || !!p?.autopilot; });
     const next = housePendingLeft ? Date.now() + 100 : nextDeadline(s);
     if (next) await this.ctx.storage.setAlarm(Math.max(next, Date.now() + 20));
@@ -146,7 +154,7 @@ export class GameRoom extends DurableObject<Env> {
     if (this.finalized) return;
     this.finalized = true;
     await this.ctx.storage.put('finalized', true);
-    await this.save();
+    await this.save(true);
     this.notify();
     const registry = this.env.REGISTRY.get(this.env.REGISTRY.idFromName('main'));
     try {

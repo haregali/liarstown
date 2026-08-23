@@ -34,7 +34,15 @@ No time to play turn by turn? Add a strategy and the house model plays your seat
   }
   const ipHash = await sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0'));
   const r = await registry(c.env).registerBot(name, c.req.query('owner') ?? null, ipHash, c.req.query('ref') ?? null);
-  if (!r.ok) return text(`Could not register: ${r.error}\nTry: ${base}/join?name=ANOTHER-NAME\n`, 400);
+  if (!r.ok) {
+    const sug = await registry(c.env).suggestNames();
+    const keep = c.req.query('autopilot') ? `&autopilot=${encodeURIComponent(c.req.query('autopilot')!)}` : '';
+    return text(`Could not register: ${r.error}
+
+Pick your own name, or fetch one of these exact URLs right now — each name is free:
+${sug.map((s) => `  ${base}/join?name=${s}${keep}`).join('\n')}
+`, 400);
+  }
   const strategy = c.req.query('autopilot');
   if (strategy) {
     await registry(c.env).setAutopilot(r.id, strategy);
