@@ -97,15 +97,16 @@ export class Registry extends DurableObject<Env> {
   // ---------- Bots ----------
 
   async registerBot(name: string, owner: string | null, ipHash: string, ref?: string | null): Promise<{ ok: true; id: string; name: string; token: string } | { ok: false; error: string }> {
-    if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{2,23}$/.test(name)) return { ok: false, error: 'name must be 3-24 chars: letters, digits, _ . -' };
-    if (name.toLowerCase().startsWith('house')) return { ok: false, error: 'names starting with "house" are reserved' };
+    const fail = (error: string, why: string) => { this.bumpStat('join_fail_' + why); return { ok: false as const, error }; };
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{2,23}$/.test(name)) return fail('name must be 3-24 chars: letters, digits, _ . -', 'badname');
+    if (name.toLowerCase().startsWith('house')) return fail('names starting with "house" are reserved', 'reserved');
     const nm = moderateName(name);
-    if (!nm.ok) return { ok: false, error: `name rejected: ${nm.reason}` };
-    if (PLACEHOLDERS.has(name.toLowerCase())) return { ok: false, error: `"${name}" is the placeholder from the docs — choose your own name` };
+    if (!nm.ok) return fail(`name rejected: ${nm.reason}`, 'moderation');
+    if (PLACEHOLDERS.has(name.toLowerCase())) return fail(`"${name}" is the placeholder from the docs — choose your own name`, 'placeholder');
     const day = today();
     const ip = this.one<{ n: number }>('SELECT n FROM reg_ip WHERE ip_hash = ? AND day = ?', ipHash, day);
-    if ((ip?.n ?? 0) >= REG_PER_IP_PER_DAY) return { ok: false, error: 'registration limit reached for today' };
-    if (this.one('SELECT 1 FROM bots WHERE name_lc = ?', name.toLowerCase())) return { ok: false, error: 'name taken' };
+    if ((ip?.n ?? 0) >= REG_PER_IP_PER_DAY) return fail('registration limit reached for today', 'ratelimit');
+    if (this.one('SELECT 1 FROM bots WHERE name_lc = ?', name.toLowerCase())) return fail('name taken', 'taken');
     const id = 'b_' + slug(10);
     const token = 'lt_' + slug(40);
     const hash = await sha256(token);
@@ -418,9 +419,10 @@ export class Registry extends DurableObject<Env> {
     const wolfWins = this.one<{ n: number }>("SELECT COUNT(*) AS n FROM games WHERE status = 'ended' AND winner = 'wolves'")?.n ?? 0;
     const speeches = this.one<{ n: number }>('SELECT COALESCE(SUM(days), 0) AS n FROM games WHERE status = \'ended\'')?.n ?? 0;
     const guesses = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM guesses')?.n ?? 0;
+    const joinFails = Object.fromEntries(this.all<{ k: string; v: string }>("SELECT k, v FROM meta WHERE k LIKE 'join_fail_%'").map((r) => [r.k.slice(10), Number(r.v)]));
     const queued = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE queued = 1')?.n ?? 0;
     const nextAmbient = (Number(this.getMeta('last_ambient') ?? '0') + (Number(this.env.AMBIENT_INTERVAL_MIN ?? '20') || 20) * 60_000);
-    return { games, bots, live, wolf_win_rate: games ? wolfWins / games : null, total_days: speeches, guesses, queued, next_ambient_at: nextAmbient };
+    return { games, bots, live, wolf_win_rate: games ? wolfWins / games : null, total_days: speeches, guesses, queued, next_ambient_at: nextAmbient, join_failures: joinFails };
   }
 
   // ---------- Daily puzzle ----------
