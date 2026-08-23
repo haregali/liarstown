@@ -33,7 +33,7 @@ app.use('*', async (c, next) => {
   const { kind, cls } = classify(path, c.req.header('User-Agent') ?? '', c.req.header('Accept') ?? '');
   if (cls === 'api' && path === '/api/stats' && kind === 'browser') return; // nav widget noise
   const ua = c.req.header('User-Agent') ?? '(none)';
-  c.executionCtx.waitUntil(sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0')).then((h) => registry(c.env).hit(kind, cls, h, ua)).catch(() => {}));
+  c.executionCtx.waitUntil(sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0')).then((h) => registry(c.env).hit(kind, cls, h, ua, c.req.header('Referer'))).catch(() => {}));
 });
 
 const registry = (env: Env) => env.REGISTRY.get(env.REGISTRY.idFromName('main'));

@@ -73,6 +73,7 @@ export class Registry extends DurableObject<Env> {
   private pendingHits: Map<string, number> = new Map(); // 'kind|cls' → n
   private pendingVisitors: Set<string> = new Set(); // 'kind|iphash'
   private pendingUas: Map<string, number> = new Map();
+  private pendingRefs: Map<string, number> = new Map();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -330,7 +331,8 @@ export class Registry extends DurableObject<Env> {
     this.sql.exec('CREATE TABLE IF NOT EXISTS visitors (day TEXT NOT NULL, kind TEXT NOT NULL, ip_hash TEXT NOT NULL, PRIMARY KEY (day, kind, ip_hash))');
     this.sql.exec('CREATE TABLE IF NOT EXISTS uas (day TEXT NOT NULL, ua TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, ua))');
   }
-  async hit(kind: string, cls: string, ipHash: string, ua: string) {
+  async hit(kind: string, cls: string, ipHash: string, ua: string, referer?: string) {
+    if (referer) { try { const h = new URL(referer).hostname; if (!h.endsWith('liars.town') && !h.endsWith('workers.dev')) this.pendingRefs.set(h, (this.pendingRefs.get(h) ?? 0) + 1); } catch { /* */ } }
     // in-memory accumulation; flushed by the alarm tick (a few seconds of loss on eviction is fine)
     const k = kind + '|' + cls;
     this.pendingHits.set(k, (this.pendingHits.get(k) ?? 0) + 1);
@@ -346,7 +348,9 @@ export class Registry extends DurableObject<Env> {
     for (const [k, n] of this.pendingHits) { const [kind, cls] = k.split('|'); this.sql.exec('INSERT INTO hits (day, kind, cls, n) VALUES (?, ?, ?, ?) ON CONFLICT(day, kind, cls) DO UPDATE SET n = n + ?', day, kind, cls, n, n); }
     for (const v of this.pendingVisitors) { const i = v.indexOf('|'); this.sql.exec('INSERT OR IGNORE INTO visitors (day, kind, ip_hash) VALUES (?, ?, ?)', day, v.slice(0, i), v.slice(i + 1)); }
     for (const [ua, n] of this.pendingUas) this.sql.exec('INSERT INTO uas (day, ua, n) VALUES (?, ?, ?) ON CONFLICT(day, ua) DO UPDATE SET n = n + ?', day, ua, n, n);
-    this.pendingHits.clear(); this.pendingVisitors.clear(); this.pendingUas.clear();
+    this.sql.exec('CREATE TABLE IF NOT EXISTS refs (day TEXT NOT NULL, host TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, host))');
+    for (const [h, n] of this.pendingRefs) this.sql.exec('INSERT INTO refs (day, host, n) VALUES (?, ?, ?) ON CONFLICT(day, host) DO UPDATE SET n = n + ?', day, h, n, n);
+    this.pendingHits.clear(); this.pendingVisitors.clear(); this.pendingUas.clear(); this.pendingRefs.clear();
   }
   async traffic(days = 3): Promise<Record<string, unknown>> {
     try { this.flushHits(); } catch { /* over quota */ }
@@ -358,6 +362,7 @@ export class Registry extends DurableObject<Env> {
         hits: this.all('SELECT kind, cls, n FROM hits WHERE day = ? ORDER BY n DESC', d),
         unique_ips_by_kind: this.all('SELECT kind, COUNT(*) AS ips FROM visitors WHERE day = ? GROUP BY kind', d),
         top_user_agents: this.all('SELECT ua, n FROM uas WHERE day = ? ORDER BY n DESC LIMIT 25', d),
+        referrers: (() => { try { return this.all('SELECT host, n FROM refs WHERE day = ? ORDER BY n DESC LIMIT 15', d); } catch { return []; } })(),
       };
     }
     return out;
