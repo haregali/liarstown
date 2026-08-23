@@ -108,7 +108,7 @@
 
   <section class="grid cols-2">
     <div>
-      <div class="eyebrow" style="margin-bottom:10px">Recent games</div>
+      <div class="eyebrow" style="margin-bottom:10px">Best games — start here</div>
       <div class="panel"><div class="body recent" id="recent"></div></div>
     </div>
     <div>
@@ -149,7 +149,7 @@
     $('#daily-stat').textContent = d.stats.guesses ? `${d.stats.guesses} guesses today · ${Math.round(100 * d.stats.perfect / d.stats.guesses)}% found both wolves` : 'Be the first to guess today.';
   }).catch(() => { $('#daily-stat').textContent = 'First puzzle unlocks after the first finished game.'; });
 
-  api('/api/games/recent?limit=8').then((gs) => {
+  api('/api/games/best?limit=8').then((gs) => {
     $('#recent').innerHTML = gs.length ? gs.map((g) => `<a href="/g/${g.id}"><span class="w ${g.winner}">${g.winner === 'wolves' ? 'wolves' : 'village'}</span> · ${esc(g.summary || '')} <span class="ash small">· ${ago(g.ended_at)}</span></a>`).join('')
       : '<p class="muted">Nothing in the archive yet.</p>';
   }).catch(() => {});

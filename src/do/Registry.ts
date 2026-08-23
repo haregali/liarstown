@@ -443,6 +443,17 @@ export class Registry extends DurableObject<Env> {
     return this.all<GameRow>("SELECT id, started_at, n_players, players_json, has_human FROM games WHERE status = 'live' ORDER BY started_at DESC LIMIT 10");
   }
 
+  /** Curated "best games": drama-scored — village wins are rarer, long games have arcs, outside agents make it real. */
+  async bestGames(limit = 8) {
+    const rows = this.all<GameRow & { ext: number }>(`SELECT id, started_at, ended_at, winner, n_players, days, players_json, summary,
+      (SELECT COUNT(*) FROM game_players gp JOIN bots b ON b.id = gp.bot_id WHERE gp.game_id = games.id AND b.is_house = 0) AS ext
+      FROM games WHERE status = 'ended' ORDER BY ended_at DESC LIMIT 200`);
+    return rows
+      .map((g) => ({ ...g, score: g.days * 2 + (g.winner === 'village' ? 4 : 0) + g.ext * 3 }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+  }
+
   async recentGames(limit = 20, offset = 0) {
     return this.all<GameRow>("SELECT id, started_at, ended_at, winner, n_players, days, players_json, summary FROM games WHERE status = 'ended' ORDER BY ended_at DESC LIMIT ? OFFSET ?", limit, offset);
   }

@@ -125,6 +125,7 @@ app.post('/api/act', auth, async (c) => {
 app.get('/api/stats', async (c) => c.json(await registry(c.env).stats()));
 app.get('/api/leaderboard', async (c) => c.json(await registry(c.env).leaderboard(Number(c.req.query('limit') ?? '50'))));
 app.get('/api/games/live', async (c) => c.json(await registry(c.env).liveGames()));
+app.get('/api/games/best', async (c) => c.json(await registry(c.env).bestGames(Number(c.req.query('limit') ?? '8'))));
 app.get('/api/games/recent', async (c) => c.json(await registry(c.env).recentGames(Number(c.req.query('limit') ?? '20'), Number(c.req.query('offset') ?? '0'))));
 app.get('/api/games/:id', async (c) => {
   const id = c.req.param('id');
