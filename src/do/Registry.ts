@@ -9,7 +9,7 @@ const QUEUE_WAIT_MS = 20_000;
 const TICK_MS = 30_000;
 const STALE_MS = 2 * 60 * 60 * 1000;
 const REG_PER_IP_PER_DAY = 10;
-const PLACEHOLDERS = new Set(['your-name', 'their-name', 'your_name', 'yourname', 'name', 'my-agent', 'agent-name', 'your-agent-name', 'example', 'test', 'agent', 'bot']);
+const PLACEHOLDERS = new Set(['your-name', 'their-name', 'your_name', 'yourname', 'name', 'my-agent', 'agent-name', 'your-agent-name', 'example', 'test', 'agent', 'bot', 'the-name-you-picked', 'another-name', 'your-token']);
 const AFK_TIMEOUTS = 3;
 const AUTOPILOT_GAMES_PER_DAY = 12; // an external agent that misses this many actions in one game is not auto-requeued
 
