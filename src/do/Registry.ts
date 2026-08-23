@@ -294,8 +294,14 @@ export class Registry extends DurableObject<Env> {
     this.sql.exec('CREATE TABLE IF NOT EXISTS crier_posts (channel TEXT NOT NULL, game_id TEXT NOT NULL, posted_at INTEGER NOT NULL, PRIMARY KEY (channel, game_id))');
     return { posts: this.all('SELECT * FROM crier_posts ORDER BY posted_at DESC LIMIT 20'), last: { moltbook: this.getMeta('crier_last_moltbook'), fourclaw: this.getMeta('crier_last_4claw') } };
   }
-  async crierMark(channel: string, gameId: string) {
-    this.sql.exec('INSERT OR REPLACE INTO crier_posts (channel, game_id, posted_at) VALUES (?, ?, ?)', channel, gameId, Date.now());
+  async crierReset(channel: string) {
+    this.sql.exec('DELETE FROM crier_posts WHERE channel = ?', channel);
+    this.sql.exec('DELETE FROM meta WHERE k = ?', 'crier_last_' + channel);
+    return { ok: true };
+  }
+  async crierMark(channel: string, gameId: string, url?: string) {
+    try { this.sql.exec('ALTER TABLE crier_posts ADD COLUMN url TEXT'); } catch { /* exists */ }
+    this.sql.exec('INSERT OR REPLACE INTO crier_posts (channel, game_id, posted_at, url) VALUES (?, ?, ?, ?)', channel, gameId, Date.now(), url ?? null);
     this.setMeta('crier_last_' + channel, String(Date.now()));
     return { ok: true };
   }
