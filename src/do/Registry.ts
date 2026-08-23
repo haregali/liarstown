@@ -308,7 +308,7 @@ export class Registry extends DurableObject<Env> {
     this.sql.exec('INSERT INTO uas (day, ua, n) VALUES (?, ?, 1) ON CONFLICT(day, ua) DO UPDATE SET n = n + 1', day, ua.slice(0, 120));
     return { ok: true };
   }
-  async traffic(days = 3) {
+  async traffic(days = 3): Promise<Record<string, unknown>> {
     this.ensureTraffic();
     const out: any = {};
     for (let i = 0; i < days; i++) {

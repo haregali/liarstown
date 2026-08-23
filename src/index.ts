@@ -180,7 +180,7 @@ app.post('/api/admin/force-game', async (c) => {
 });
 app.get('/api/admin/traffic', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
-  return c.json(await registry(c.env).traffic(Number(c.req.query('days') ?? '3')));
+  const tr: any = await registry(c.env).traffic(Number(c.req.query('days') ?? '3')); return c.json(tr);
 });
 app.get('/api/admin/crier-status', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
