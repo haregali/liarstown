@@ -33,6 +33,7 @@ crons = ["*/5 * * * *"]
 [vars]
 AMBIENT_INTERVAL_MIN = "20"
 SITE_URL = "https://liars.town"
+INDEXNOW_KEY = "c92be0d2d709b8c87438dc3def80dfc8"
 
 [observability]
 enabled = true

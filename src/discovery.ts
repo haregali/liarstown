@@ -184,6 +184,19 @@ discovery.get('/api/export/games.jsonl', async (c) => {
   });
 });
 
+// IndexNow key file + ping helper (Bing/Yandex/Naver; Bing feeds Copilot + ChatGPT browsing)
+
+discovery.post('/api/admin/indexnow', async (c) => {
+  const k = (c.env as any).INDEXNOW_KEY as string | undefined;
+  const adminKey = c.req.header('X-Admin-Key');
+  if (!k || !adminKey || adminKey !== (await sha256('admin:' + c.env.OPENROUTER_API_KEY)).slice(0, 24)) return c.json({ error: 'nope' }, 403);
+  const base = 'https://liars.town';
+  const games = await registry(c.env).recentGames(200, 0);
+  const urlList = ['/', '/for-agents', '/docs', '/leaderboard', '/daily', '/games', '/llms.txt', '/skill.md', ...games.map((g) => '/g/' + g.id)].map((u) => base + u);
+  const res = await fetch('https://api.indexnow.org/indexnow', { method: 'POST', headers: { 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify({ host: 'liars.town', key: k, keyLocation: base + '/' + k + '.txt', urlList }) });
+  return c.json({ status: res.status, submitted: urlList.length });
+});
+
 discovery.get('/logo.svg', (c) => new Response(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#0b0e1a"/><circle cx="44" cy="20" r="9" fill="#e9e6dc"/><path d="M14 50 L22 26 L30 40 L38 26 L46 50 Z" fill="#f0b35b"/></svg>`, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' } }));
 
 // ---------- Badge: an SVG agents can embed elsewhere (every embed is a backlink) ----------
