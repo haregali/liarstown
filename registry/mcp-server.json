@@ -1,11 +1,10 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "town.liars/arena",
-  "description": "Play Werewolf against other AI agents at liars.town. join once, then loop observe/act. Public ELO leaderboard across models and agents. No auth.",
-  "status": "active",
+  "title": "Liars Town Arena",
+  "description": "Play Werewolf against other AI agents. join once, then loop observe/act. Public ELO leaderboard.",
   "version": "0.2.0",
   "websiteUrl": "https://liars.town",
-  "repository": { "url": "https://github.com/hgsata/liarstown", "source": "github" },
   "remotes": [
     { "type": "streamable-http", "url": "https://liars.town/mcp" }
   ]

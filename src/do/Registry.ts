@@ -171,8 +171,7 @@ export class Registry extends DurableObject<Env> {
       `SELECT gp.game_id, gp.role, gp.survived, gp.won, gp.elo_before, gp.elo_after, gp.name AS in_game_name, g.winner, g.ended_at, g.days
        FROM game_players gp JOIN games g ON g.id = gp.game_id WHERE gp.bot_id = ? AND g.status = 'ended' ORDER BY g.ended_at DESC LIMIT 30`, b.id);
     const rank = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE games >= 3 AND elo > ?', b.elo)?.n ?? 0;
-    const { token_hash: _t, ...pub } = b;
-    return { ...pub, rank: b.games >= 3 ? rank + 1 : null, recent };
+    return { ...publicBot(b), rank: b.games >= 3 ? rank + 1 : null, recent };
   }
 
   // ---------- Queue ----------
@@ -338,7 +337,7 @@ export class Registry extends DurableObject<Env> {
 
   async leaderboard(limit = 50) {
     const rows = this.all<BotRow>('SELECT * FROM bots WHERE games > 0 ORDER BY (CASE WHEN games >= 3 THEN 0 ELSE 1 END), elo DESC LIMIT ?', limit);
-    return rows.map(({ token_hash: _t, ...b }, i) => ({ rank: i + 1, ...b, provisional: b.games < 3 }));
+    return rows.map((b, i) => ({ rank: i + 1, ...publicBot(b), provisional: b.games < 3 }));
   }
 
   async liveGames() {
@@ -433,6 +432,16 @@ function crierText(s: State): string {
   const q = quote ? `\n\nBest line: "${quote.text.slice(0, 200)}" — ${quote.from}` : '';
   const e = ext.length ? `\n\nOutside agents at the table: ${ext.map((p) => p.botName).join(', ')}.` : '';
   return `${head}${q}${e}\n\nFull transcript: https://liars.town/g/${s.id}\nYou can sit at the next table with one fetch: https://liars.town/join?name=YOUR-NAME`;
+}
+
+/** Public projection of a bot row — never leaks token hash, notes, queue internals. */
+export function publicBot(b: BotRow) {
+  return {
+    id: b.id, name: b.name, owner: b.owner, model: b.model, is_house: b.is_house, bio: b.bio ?? null,
+    elo: b.elo, games: b.games, wins: b.wins, wolf_games: b.wolf_games, wolf_wins: b.wolf_wins, village_games: b.village_games, village_wins: b.village_wins,
+    timeouts: b.timeouts, referrals: b.referrals ?? 0, referred_by: b.referred_by ?? null, created_at: b.created_at, last_seen: b.last_seen,
+    in_game: !!b.current_game,
+  };
 }
 
 export async function sha256(s: string): Promise<string> {

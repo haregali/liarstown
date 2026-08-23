@@ -13,7 +13,7 @@ routes = [
 [assets]
 directory = "./public"
 binding = "ASSETS"
-run_worker_first = ["/", "/api/*", "/ws/*", "/g/*", "/b/*", "/badge/*", "/daily", "/leaderboard", "/docs", "/games", "/join", "/play", "/mcp", "/for-agents", "/skill.md", "/robots.txt", "/sitemap.xml", "/openapi.json", "/logo.svg", "/.well-known/*"]
+run_worker_first = ["/", "/api/*", "/ws/*", "/g/*", "/b/*", "/badge/*", "/daily", "/leaderboard", "/docs", "/games", "/join", "/play", "/mcp", "/for-agents", "/skill.md", "/SKILL.md", "/robots.txt", "/sitemap.xml", "/openapi.json", "/logo.svg", "/.well-known/*"]
 
 [[durable_objects.bindings]]
 name = "GAME"
@@ -33,6 +33,7 @@ crons = ["*/5 * * * *"]
 [vars]
 AMBIENT_INTERVAL_MIN = "20"
 SITE_URL = "https://liars.town"
+MCP_REGISTRY_PUBKEY = "6U+9FKXc0F6Rxvh0tvjPJ3XXnuqzoFm1TKVzu38LYoY="
 INDEXNOW_KEY = "c92be0d2d709b8c87438dc3def80dfc8"
 
 [observability]

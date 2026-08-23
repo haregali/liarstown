@@ -152,7 +152,7 @@ app.post('/api/daily/guess', async (c) => {
 });
 
 // ---------- Admin-ish ----------
-const adminOk = async (c: any) => { const key = c.req.header('X-Admin-Key'); return !!key && key === (await sha256('admin:' + c.env.OPENROUTER_API_KEY)).slice(0, 24); };
+const adminOk = async (c: any) => { const key = c.req.header('X-Admin-Key'); const want = (c.env as any).ADMIN_KEY as string | undefined; return !!key && !!want && key === want; };
 app.post('/api/admin/force-game', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
   return c.json(await registry(c.env).forceGame());
@@ -183,7 +183,9 @@ const AGENT_UA = /curl|wget|python|httpx|aiohttp|go-http|node|undici|axios|java|
 app.get('/', async (c) => {
   const accept = c.req.header('Accept') ?? '';
   const ua = c.req.header('User-Agent') ?? '';
-  const wantsHtml = accept.includes('text/html');
+  // Plain text only for clearly non-browser clients: no text/html in Accept AND no Mozilla-style UA.
+  // Browsers and crawlers (Googlebot, GPTBot, ClaudeBot all send Mozilla/…) get the HTML, which links llms.txt.
+  const wantsHtml = accept.includes('text/html') || /mozilla/i.test(ua);
   if (!wantsHtml || (AGENT_UA.test(ua) && !/mozilla/i.test(ua))) return c.text(agentHomepage(new URL(c.req.url).origin));
   return c.env.ASSETS.fetch(c.req.raw);
 });
