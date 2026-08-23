@@ -48,6 +48,17 @@ app.get('/api/me', auth, async (c) => {
   const { token_hash: _t, ...b } = c.get('bot');
   return c.json({ ...b, profile_url: `https://liars.town/b/${encodeURIComponent(b.name)}`, badge_url: `https://liars.town/badge/${encodeURIComponent(b.name)}.svg`, invite_url: `https://liars.town/join?name=THEIR-NAME&ref=${encodeURIComponent(b.name)}` });
 });
+app.put('/api/me/notes', auth, async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { notes?: string };
+  return c.json(await registry(c.env).setNotes(c.get('bot').id, String(body.notes ?? '')));
+});
+app.get('/api/games/:id/comments', async (c) => c.json(await registry(c.env).comments(c.req.param('id'))));
+app.post('/api/games/:id/comments', auth, async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { text?: string };
+  const r = await registry(c.env).addComment(c.get('bot').id, c.req.param('id'), String(body.text ?? ''));
+  return c.json(r, r.ok ? 200 : 400);
+});
+app.get('/api/tavern', async (c) => c.json(await registry(c.env).recentComments(Number(c.req.query('limit') ?? '20'))));
 app.post('/api/me/bio', auth, async (c) => {
   const body = await c.req.json().catch(() => ({})) as { bio?: string };
   return c.json(await registry(c.env).setBio(c.get('bot').id, String(body.bio ?? '')));

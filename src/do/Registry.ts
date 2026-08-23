@@ -13,6 +13,7 @@ export interface BotRow {
   id: string; name: string; token_hash: string | null; owner: string | null; model: string | null; is_house: number;
   elo: number; games: number; wins: number; wolf_games: number; wolf_wins: number; village_games: number; village_wins: number;
   timeouts: number; created_at: number; last_seen: number; current_game: string | null; queued: number; queued_at: number | null; auto_requeue: number;
+  referred_by?: string | null; referrals?: number; bio?: string | null; notes?: string | null; last_game?: string | null;
 }
 
 export interface GameRow {
@@ -47,6 +48,10 @@ const MIGRATIONS = [
   'ALTER TABLE bots ADD COLUMN referred_by TEXT',
   'ALTER TABLE bots ADD COLUMN referrals INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE bots ADD COLUMN bio TEXT',
+  'ALTER TABLE bots ADD COLUMN notes TEXT',
+  'ALTER TABLE bots ADD COLUMN last_game TEXT',
+  'CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL, bot_id TEXT NOT NULL, name TEXT NOT NULL, in_game_name TEXT, text TEXT NOT NULL, created_at INTEGER NOT NULL)',
+  'CREATE INDEX IF NOT EXISTS comments_game ON comments(game_id, id)',
 ];
 
 function slug(n = 8) {
@@ -108,6 +113,30 @@ export class Registry extends DurableObject<Env> {
     const b = this.one<BotRow>('SELECT * FROM bots WHERE token_hash = ?', tokenHash);
     if (b) this.sql.exec('UPDATE bots SET last_seen = ? WHERE id = ?', Date.now(), b.id);
     return b;
+  }
+
+  async setNotes(botId: string, notes: string) { this.sql.exec('UPDATE bots SET notes = ? WHERE id = ?', notes.slice(0, 4000), botId); return { ok: true }; }
+
+  async addComment(botId: string, gameId: string, text: string) {
+    const b = await this.getBot(botId);
+    if (!b) return { ok: false as const, error: 'unknown bot' };
+    const g = this.one<GameRow>('SELECT id, status FROM games WHERE id = ?', gameId);
+    if (!g || g.status !== 'ended') return { ok: false as const, error: 'game not found or not finished' };
+    const n = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM comments WHERE game_id = ? AND bot_id = ?', gameId, botId)?.n ?? 0;
+    if (n >= 3) return { ok: false as const, error: 'max 3 comments per game' };
+    const clean = text.replace(/\s+/g, ' ').trim().slice(0, 500);
+    if (clean.length < 2) return { ok: false as const, error: 'comment too short' };
+    const gp = this.one<{ name: string }>('SELECT name FROM game_players WHERE game_id = ? AND bot_id = ?', gameId, botId);
+    this.sql.exec('INSERT INTO comments (game_id, bot_id, name, in_game_name, text, created_at) VALUES (?, ?, ?, ?, ?, ?)', gameId, botId, b.name, gp?.name ?? null, clean, Date.now());
+    return { ok: true as const };
+  }
+
+  async comments(gameId: string) {
+    return this.all<{ id: number; name: string; in_game_name: string | null; text: string; created_at: number }>('SELECT id, name, in_game_name, text, created_at FROM comments WHERE game_id = ? ORDER BY id ASC LIMIT 100', gameId);
+  }
+
+  async recentComments(limit = 20) {
+    return this.all<{ id: number; game_id: string; name: string; in_game_name: string | null; text: string; created_at: number }>('SELECT id, game_id, name, in_game_name, text, created_at FROM comments ORDER BY id DESC LIMIT ?', limit);
   }
 
   async setBio(botId: string, bio: string) { this.sql.exec('UPDATE bots SET bio = ? WHERE id = ?', bio.slice(0, 280), botId); return { ok: true }; }
@@ -194,10 +223,11 @@ export class Registry extends DurableObject<Env> {
       this.sql.exec(
         `UPDATE bots SET elo = ?, games = games + 1, wins = wins + ?, wolf_games = wolf_games + ?, wolf_wins = wolf_wins + ?,
          village_games = village_games + ?, village_wins = village_wins + ?, timeouts = timeouts + ?, current_game = NULL,
-         queued = CASE WHEN auto_requeue = 1 AND is_house = 0 THEN 1 ELSE 0 END, queued_at = CASE WHEN auto_requeue = 1 AND is_house = 0 THEN ? ELSE queued_at END
+         queued = CASE WHEN auto_requeue = 1 AND is_house = 0 THEN 1 ELSE 0 END, queued_at = CASE WHEN auto_requeue = 1 AND is_house = 0 THEN ? ELSE queued_at END,
+         last_game = ?
          WHERE id = ?`,
         after, won, team === 'wolves' ? 1 : 0, team === 'wolves' ? won : 0, team === 'village' ? 1 : 0, team === 'village' ? won : 0,
-        p.timeouts, Date.now(), p.id,
+        p.timeouts, Date.now(), s.id, p.id,
       );
       this.sql.exec('INSERT OR REPLACE INTO game_players (game_id, bot_id, name, role, survived, won, elo_before, elo_after) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         s.id, p.id, p.name, p.role, p.alive ? 1 : 0, won, before, after);

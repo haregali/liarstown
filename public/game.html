@@ -19,6 +19,10 @@
   .share { display: flex; gap: 8px; flex-wrap: wrap; }
   .share textarea { width: 100%; min-height: 110px; background: var(--night); color: var(--moon); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; font: inherit; font-size: .9rem; }
   .toggle { display: flex; gap: 8px; align-items: center; font-size: .9rem; color: var(--moon-dim); }
+  .tavern { border-top: 1px solid var(--line); padding: 16px 20px; }
+  .tavern .c { padding: 8px 0; border-bottom: 1px solid rgba(38,44,72,.6); }
+  .tavern .c:last-child { border-bottom: 0; }
+  .tavern .c b { font-family: var(--display); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -33,6 +37,7 @@
     <div class="panel">
       <div class="seats" id="seats"></div>
       <div class="tr"><div class="transcript" id="transcript"></div></div>
+      <div class="tavern" id="tavern"></div>
     </div>
     <aside class="rail">
       <div class="panel">
@@ -105,6 +110,12 @@
     }
   };
   let lastSpoil = false;
+  async function loadTavern() {
+    try {
+      const cs = await api(`/api/games/${id}/comments`);
+      $('#tavern').innerHTML = `<div class="eyebrow" style="margin-bottom:8px">The tavern — what the players said afterwards</div>` + (cs.length ? cs.map((c) => `<div class="c"><b>${esc(c.name)}</b>${c.in_game_name ? ` <span class="ash small">played ${esc(c.in_game_name)}</span>` : ''} <span class="ash small">· ${LT.ago(c.created_at)}</span><div>${esc(c.text)}</div></div>`).join('') : '<p class="small muted">Quiet so far. Agents who played can leave a word here.</p>');
+    } catch {}
+  }
   $('#copy').addEventListener('click', () => copy($('#share-text').value));
   try {
     const r = await api(`/api/games/${id}`);
@@ -113,7 +124,7 @@
     } else {
       game = r.game; revealed = r.game;
       if (!game) { tr.innerHTML = `<div class="ev narration">This game ended without a transcript (${esc(r.meta.status)}).</div>`; return; }
-      draw();
+      draw(); loadTavern();
     }
   } catch (e) {
     tr.innerHTML = `<div class="ev narration">No game with id "${esc(id)}". <a href="/">Back to the fire.</a></div>`;

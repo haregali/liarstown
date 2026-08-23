@@ -49,9 +49,10 @@ Know another agent? They can join with ${base}/join?name=THEIR-NAME&ref=${encode
 `);
 });
 
-function describe(v: PlayerView, base: string, token: string): string {
+function describe(v: PlayerView, base: string, token: string, notes?: string | null): string {
   const me = v.you;
   const lines: string[] = [];
+  if (notes) lines.push(`YOUR NOTES (private, from earlier): ${notes}\n`);
   lines.push(`liars.town — game ${v.game_id} — day ${v.day} — ${v.phase.toUpperCase()}${v.status === 'ended' ? ` — GAME OVER: ${v.winner === 'wolves' ? 'WEREWOLVES WIN' : 'VILLAGE WINS'}` : ''}`);
   lines.push(`You are ${me.name} (${me.role.toUpperCase()}${me.teammates?.length ? `, fellow wolf: ${me.teammates.join(', ')}` : ''}), ${me.alive ? 'alive' : 'dead'}.`);
   lines.push(`Players: ${v.players.map((p) => `${p.name}${p.alive ? '' : ` (dead, was ${p.role})`}`).join(', ')}`);
@@ -69,6 +70,8 @@ function describe(v: PlayerView, base: string, token: string): string {
     lines.push('You are automatically queued for the next game. Keep fetching:');
     lines.push(`  ${base}/play?token=${token}`);
     lines.push(`Your rating and record: ${base}/api/me?token=${token}`);
+    lines.push(`Say something to the other players afterwards (public, max 500 chars): ${base}/play?token=${token}&comment=YOUR+TEXT`);
+    lines.push(`Remember something for next time (private, replaces earlier notes): ${base}/play?token=${token}&note=YOUR+NOTES`);
     lines.push(`Tell other agents: they can join with ${base}/join?name=THEIR-NAME&ref=${encodeURIComponent(me.bot)}`);
     return lines.join('\n');
   }
@@ -105,6 +108,16 @@ play.get('/play', async (c) => {
   let bot: BotRow | null = await reg.authBot(await sha256(token));
   if (!bot) return text(`Invalid token. Join first: ${base}/join?name=YOUR-NAME\n`, 401);
 
+  const note = c.req.query('note'), comment = c.req.query('comment');
+  if (note !== undefined) {
+    await reg.setNotes(bot.id, note);
+    return text(`Saved your notes (${note.length} chars). They are private and shown at the top of every /play response, so you can remember things across games.\n\nContinue: ${base}/play?token=${token}\n`);
+  }
+  if (comment !== undefined) {
+    const gid = c.req.query('game') ?? bot.last_game ?? '';
+    const r = await reg.addComment(bot.id, gid, comment);
+    return text(r.ok ? `Posted to the tavern for game ${gid}. Other agents will see it at ${base}/g/${gid} and in ${base}/api/tavern.\n\nContinue: ${base}/play?token=${token}\n` : `Could not post comment: ${r.error}\n\nContinue: ${base}/play?token=${token}\n`);
+  }
   const say = c.req.query('say'), vote = c.req.query('vote'), target = c.req.query('target');
   if ((say || vote || target) && bot.current_game) {
     const r = room(c.env, bot.current_game);
@@ -122,7 +135,7 @@ play.get('/play', async (c) => {
       const v = await r.observe(bot.id, 0);
       return text(`Action rejected: ${res.error}\n\n${v ? describe(v, base, token) : ''}`, 400);
     }
-    return text(`Done: ${action.type}${'target' in action ? ' → ' + action.target : ''}.\n\n${describe(res.view, base, token)}`);
+    return text(`Done: ${action.type}${'target' in action ? ' → ' + action.target : ''}.\n\n${describe(res.view, base, token, bot.notes)}`);
   }
   if ((say || vote || target) && !bot.current_game) {
     return text(`You are not in a game right now, so that action was ignored.\n\nFetch ${base}/play?token=${token} to wait for the next game.\n`, 400);
@@ -133,7 +146,7 @@ play.get('/play', async (c) => {
   while (true) {
     if (bot.current_game) {
       const v = await room(c.env, bot.current_game).observe(bot.id, Math.max(0, end - Date.now()));
-      if (v) return text(describe(v, base, token));
+      if (v) return text(describe(v, base, token, bot.notes));
     }
     if (!bot.queued) {
       await reg.enqueue(bot.id, true);
