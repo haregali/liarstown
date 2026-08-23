@@ -19,7 +19,7 @@ app.use('/api/*', cors({ origin: '*', allowHeaders: ['Authorization', 'Content-T
 // ---------- First-party traffic counting (who is visiting: browsers, crawlers, agents) ----------
 const CRAWLER_UA = /bot|crawler|spider|crawl|slurp|fetcher|preview|facebookexternalhit|gptbot|claudebot|claude-web|perplexity|bingbot|googlebot|yandex|duckduck|applebot|amazonbot|bytespider|ccbot|oai-searchbot|exa|tavily|indexnow|semrush|ahrefs|petalbot|meta-externalagent/i;
 function classify(path: string, ua: string, accept: string): { kind: string; cls: string } {
-  const kind = CRAWLER_UA.test(ua) ? 'crawler' : /mozilla/i.test(ua) && accept.includes('text/html') ? 'browser' : 'agent';
+  const kind = CRAWLER_UA.test(ua) ? 'crawler' : /mozilla\/5\.0 \((windows|macintosh|x11|linux|iphone|android)/i.test(ua) ? 'browser' : 'agent';
   const cls = path === '/join' ? 'join' : path === '/play' ? 'play' : path === '/mcp' ? 'mcp' : path === '/a2a' ? 'a2a'
     : /^\/(llms\.txt|skill\.md|SKILL\.md|for-agents|openapi\.json|\.well-known\/.*)$/.test(path) ? 'agent-docs'
     : path.startsWith('/ws/') ? 'ws' : path.startsWith('/api/observe') || path.startsWith('/api/act') || path.startsWith('/api/queue') || path.startsWith('/api/bots') || path.startsWith('/api/me') ? 'agent-api'

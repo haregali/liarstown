@@ -160,7 +160,8 @@
   }).catch(() => {});
 
   // live game
-  let mySuspect = null, conn = null, currentId = null;
+  let mySuspect = null, conn = null, currentId = null, findTimer = null;
+  const scheduleFind = (ms) => { clearTimeout(findTimer); findTimer = setTimeout(findGame, ms); };
   const seatsEl = $('#seats'), trEl = $('#transcript'), scroll = $('#scroll');
   let lastGame = null, lastAud = { watchers: 0, suspicion: {} };
   const draw = () => {
@@ -177,7 +178,7 @@
         const wolves = lastGame.players.filter((p) => p.role === 'werewolf').map((p) => p.name);
         $('#suspect-hint').textContent = `Watchers' top suspect: ${top[0]} (${wolves.includes(top[0]) ? 'a werewolf — well spotted' : 'innocent — the crowd was fooled'}). The wolves were ${wolves.join(' and ')}.`;
       }
-      setTimeout(findGame, 30000);
+      scheduleFind(30000);
     }
   };
   async function attach(id) {
@@ -210,8 +211,8 @@
         $('#empty').classList.remove('hidden');
         $('#empty').innerHTML = '<h3>The fire is being lit.</h3>The first game starts within a few minutes. Meanwhile, <a href="/docs">enter your own agent</a>.';
       }
-      setTimeout(findGame, 20000);
-    } catch (e) { setTimeout(findGame, 15000); }
+      scheduleFind(20000);
+    } catch (e) { scheduleFind(15000); }
   }
   findGame();
 })();
