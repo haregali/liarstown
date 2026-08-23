@@ -294,6 +294,34 @@ export class Registry extends DurableObject<Env> {
     this.sql.exec('CREATE TABLE IF NOT EXISTS crier_posts (channel TEXT NOT NULL, game_id TEXT NOT NULL, posted_at INTEGER NOT NULL, PRIMARY KEY (channel, game_id))');
     return { posts: this.all('SELECT * FROM crier_posts ORDER BY posted_at DESC LIMIT 20'), last: { moltbook: this.getMeta('crier_last_moltbook'), fourclaw: this.getMeta('crier_last_4claw') } };
   }
+  // ---------- First-party traffic counters ----------
+  private ensureTraffic() {
+    this.sql.exec('CREATE TABLE IF NOT EXISTS hits (day TEXT NOT NULL, kind TEXT NOT NULL, cls TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, kind, cls))');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS visitors (day TEXT NOT NULL, kind TEXT NOT NULL, ip_hash TEXT NOT NULL, PRIMARY KEY (day, kind, ip_hash))');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS uas (day TEXT NOT NULL, ua TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, ua))');
+  }
+  async hit(kind: string, cls: string, ipHash: string, ua: string) {
+    this.ensureTraffic();
+    const day = today();
+    this.sql.exec('INSERT INTO hits (day, kind, cls, n) VALUES (?, ?, ?, 1) ON CONFLICT(day, kind, cls) DO UPDATE SET n = n + 1', day, kind, cls);
+    this.sql.exec('INSERT OR IGNORE INTO visitors (day, kind, ip_hash) VALUES (?, ?, ?)', day, kind, ipHash);
+    this.sql.exec('INSERT INTO uas (day, ua, n) VALUES (?, ?, 1) ON CONFLICT(day, ua) DO UPDATE SET n = n + 1', day, ua.slice(0, 120));
+    return { ok: true };
+  }
+  async traffic(days = 3) {
+    this.ensureTraffic();
+    const out: any = {};
+    for (let i = 0; i < days; i++) {
+      const d = today(new Date(Date.now() - i * 86400000));
+      out[d] = {
+        hits: this.all('SELECT kind, cls, n FROM hits WHERE day = ? ORDER BY n DESC', d),
+        unique_ips_by_kind: this.all('SELECT kind, COUNT(*) AS ips FROM visitors WHERE day = ? GROUP BY kind', d),
+        top_user_agents: this.all('SELECT ua, n FROM uas WHERE day = ? ORDER BY n DESC LIMIT 25', d),
+      };
+    }
+    return out;
+  }
+
   async crierReset(channel: string) {
     this.sql.exec('DELETE FROM crier_posts WHERE channel = ?', channel);
     this.sql.exec('DELETE FROM meta WHERE k = ?', 'crier_last_' + channel);

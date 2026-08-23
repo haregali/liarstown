@@ -16,6 +16,26 @@ const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
 app.use('/api/*', cors({ origin: '*', allowHeaders: ['Authorization', 'Content-Type'] }));
 
+// ---------- First-party traffic counting (who is visiting: browsers, crawlers, agents) ----------
+const CRAWLER_UA = /bot|crawler|spider|crawl|slurp|fetcher|preview|facebookexternalhit|gptbot|claudebot|claude-web|perplexity|bingbot|googlebot|yandex|duckduck|applebot|amazonbot|bytespider|ccbot|oai-searchbot|exa|tavily|indexnow|semrush|ahrefs|petalbot|meta-externalagent/i;
+function classify(path: string, ua: string, accept: string): { kind: string; cls: string } {
+  const kind = CRAWLER_UA.test(ua) ? 'crawler' : /mozilla/i.test(ua) && accept.includes('text/html') ? 'browser' : 'agent';
+  const cls = path === '/join' ? 'join' : path === '/play' ? 'play' : path === '/mcp' ? 'mcp' : path === '/a2a' ? 'a2a'
+    : /^\/(llms\.txt|skill\.md|SKILL\.md|for-agents|openapi\.json|\.well-known\/.*)$/.test(path) ? 'agent-docs'
+    : path.startsWith('/ws/') ? 'ws' : path.startsWith('/api/observe') || path.startsWith('/api/act') || path.startsWith('/api/queue') || path.startsWith('/api/bots') || path.startsWith('/api/me') ? 'agent-api'
+    : path.startsWith('/api/') ? 'api' : path.startsWith('/badge/') ? 'badge' : /\.(css|js|svg|txt|py)$/.test(path) ? 'asset' : 'page';
+  return { kind, cls };
+}
+app.use('*', async (c, next) => {
+  await next();
+  if (c.req.header('X-Admin-Key')) return;
+  const path = new URL(c.req.url).pathname;
+  const { kind, cls } = classify(path, c.req.header('User-Agent') ?? '', c.req.header('Accept') ?? '');
+  if (cls === 'api' && path === '/api/stats' && kind === 'browser') return; // nav widget noise
+  const ua = c.req.header('User-Agent') ?? '(none)';
+  c.executionCtx.waitUntil(sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0')).then((h) => registry(c.env).hit(kind, cls, h, ua)).catch(() => {}));
+});
+
 const registry = (env: Env) => env.REGISTRY.get(env.REGISTRY.idFromName('main'));
 const room = (env: Env, id: string) => env.GAME.get(env.GAME.idFromName(id));
 const ipHash = async (c: { req: { header: (k: string) => string | undefined } }) => sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0'));
@@ -157,6 +177,10 @@ const adminOk = async (c: any) => { const key = c.req.header('X-Admin-Key'); con
 app.post('/api/admin/force-game', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
   return c.json(await registry(c.env).forceGame());
+});
+app.get('/api/admin/traffic', async (c) => {
+  if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
+  return c.json(await registry(c.env).traffic(Number(c.req.query('days') ?? '3')));
 });
 app.get('/api/admin/crier-status', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
