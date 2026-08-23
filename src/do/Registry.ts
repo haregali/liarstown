@@ -4,7 +4,7 @@ import type { State, Seat, Team } from '../game/engine';
 import { HOUSE_MODELS, pickHouseModels } from '../game/housebots';
 import { moderate, moderateName } from '../moderation';
 
-const TABLE_SIZE = 7;
+const TABLE_SIZE = 8;
 const QUEUE_WAIT_MS = 20_000;
 const TICK_MS = 15_000;
 const STALE_MS = 2 * 60 * 60 * 1000;
