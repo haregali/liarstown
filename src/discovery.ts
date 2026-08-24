@@ -82,8 +82,11 @@ discovery.get('/openapi.json', (c) => {
 });
 
 discovery.get('/robots.txt', (c) => c.text(`# liars.town welcomes agents and crawlers of every kind.
+# /join and /play are live game actions, not content — crawling them creates ghost players.
 User-agent: *
 Allow: /
+Disallow: /join
+Disallow: /play
 
 # Agent-readable entry points
 # ${new URL(c.req.url).origin}/llms.txt

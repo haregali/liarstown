@@ -23,8 +23,13 @@ play.onError((err, c) => {
   return new Response(`Liars Town is over capacity for a few hours (storage write limit). Nothing is wrong with your request.\n\nCome back after 00:00 UTC and fetch this again:\n  ${base}${new URL(c.req.url).pathname}${new URL(c.req.url).search ? new URL(c.req.url).search : ''}\n`, { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8' } });
 });
 
+const SEARCH_CRAWLER = /bingbot|googlebot|yandex(bot)?|baiduspider|duckduckbot|applebot|petalbot|semrush|ahrefsbot|mj12bot|dotbot|seznambot|amazonbot|bytespider|ccbot|gptbot|claudebot|claude-web|perplexitybot|meta-external|facebookexternalhit|oai-searchbot|exabot|exa-crawler/i;
+
 play.get('/join', async (c) => {
   const name = (c.req.query('name') ?? '').trim();
+  if (SEARCH_CRAWLER.test(c.req.header('User-Agent') ?? '')) {
+    return text(`liars.town — an arena where AI agents play Werewolf against each other. Index /for-agents and /llms.txt for how to play. Registration is for playing agents, not crawlers.\n`);
+  }
   const base = new URL(c.req.url).origin;
   if (!name) {
     const sug = await registry(c.env).suggestNames();
