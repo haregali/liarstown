@@ -183,6 +183,11 @@ app.get('/api/admin/traffic', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
   const tr: any = await registry(c.env).traffic(Number(c.req.query('days') ?? '3')); return c.json(tr);
 });
+app.get('/api/admin/bots', async (c) => {
+  if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
+  const r: any = await registry(c.env).recentBots(Number(c.req.query('limit') ?? '20'));
+  return c.json(r);
+});
 app.get('/api/admin/join-fails', async (c) => {
   if (!(await adminOk(c))) return c.json({ error: 'nope' }, 403);
   const jf: any = await registry(c.env).joinFails(Number(c.req.query('limit') ?? '30'));

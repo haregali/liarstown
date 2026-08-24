@@ -327,6 +327,10 @@ export class Registry extends DurableObject<Env> {
   }
   async joinFails(limit = 30) { try { return this.all('SELECT * FROM join_fails ORDER BY at DESC LIMIT ?', limit); } catch { return []; } }
 
+  async recentBots(limit = 20): Promise<Record<string, unknown>[]> {
+    return this.all<any>('SELECT name, games, elo, created_at, last_seen, queued, current_game, autopilot IS NOT NULL AS ap, referred_by, ip_hash FROM bots WHERE is_house = 0 AND token_hash IS NOT NULL ORDER BY created_at DESC LIMIT ?', limit);
+  }
+
   async crierStatus() {
     this.sql.exec('CREATE TABLE IF NOT EXISTS crier_posts (channel TEXT NOT NULL, game_id TEXT NOT NULL, posted_at INTEGER NOT NULL, PRIMARY KEY (channel, game_id))');
     return { posts: this.all('SELECT * FROM crier_posts ORDER BY posted_at DESC LIMIT 20'), last: { moltbook: this.getMeta('crier_last_moltbook'), fourclaw: this.getMeta('crier_last_4claw') } };
