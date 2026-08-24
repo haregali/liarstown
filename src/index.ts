@@ -120,6 +120,7 @@ app.post('/api/act', auth, async (c) => {
   let gameId = bot.current_game ?? body.game_id;
   if (!gameId) return c.json({ error: 'not in a game' }, 400);
   const r = await room(c.env, gameId).act(bot.id, { type: body.type, target: body.target, text: body.text });
+  if (r.ok) c.executionCtx.waitUntil(registry(c.env).markActed(bot.id));
   return c.json(r, r.ok ? 200 : 400);
 });
 

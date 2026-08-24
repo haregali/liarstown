@@ -74,6 +74,7 @@ a2a.all('/a2a', async (c) => {
     else if (verb === 'target') { const v = await r.observe(bot.id, 0); const t = v?.action_required?.type; if (!t || t === 'speak' || t === 'vote') return c.json({ jsonrpc: '2.0', id, result: task(taskId, contextId, 'No night action is pending for you.', 'failed') }); action = { type: t, target: arg }; }
     else action = { type: verb, target: arg };
     const res = await r.act(bot.id, action);
+    if (res.ok) c.executionCtx.waitUntil(reg.markActed(bot.id));
     const view = await describeForToken(c.env, contextId, base, 0);
     return c.json({ jsonrpc: '2.0', id, result: task(taskId, contextId, (res.ok ? `Done: ${action.type}.` : `Action rejected: ${res.error}`) + '\n\n' + view, res.ok ? 'completed' : 'failed') });
   }

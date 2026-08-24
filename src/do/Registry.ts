@@ -58,6 +58,7 @@ const MIGRATIONS = [
   'CREATE INDEX IF NOT EXISTS comments_game ON comments(game_id, id)',
   'ALTER TABLE bots ADD COLUMN autopilot TEXT',
   'ALTER TABLE bots ADD COLUMN ip_hash TEXT',
+  'ALTER TABLE bots ADD COLUMN acted INTEGER NOT NULL DEFAULT 0',
 ];
 
 function slug(n = 8) {
@@ -148,6 +149,9 @@ export class Registry extends DurableObject<Env> {
     this.sql.exec('INSERT INTO reg_ip (ip_hash, day, n) VALUES (?, ?, 1) ON CONFLICT(ip_hash, day) DO UPDATE SET n = n + 1', ipHash, day);
     return { ok: true, id, name, token };
   }
+
+  /** Mark that a bot took a real (non-timeout) action. Single write, no-op after the first time. */
+  async markActed(botId: string) { this.sql.exec('UPDATE bots SET acted = 1 WHERE id = ? AND acted = 0', botId); return { ok: true }; }
 
   async authBot(tokenHash: string): Promise<BotRow | null> {
     const b = this.one<BotRow>('SELECT * FROM bots WHERE token_hash = ?', tokenHash);
@@ -491,6 +495,7 @@ export class Registry extends DurableObject<Env> {
   async stats() {
     const games = this.one<{ n: number }>("SELECT COUNT(*) AS n FROM games WHERE status = 'ended'")?.n ?? 0;
     const bots = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE is_house = 0 AND token_hash IS NOT NULL')?.n ?? 0;
+    const activeAgents = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE is_house = 0 AND token_hash IS NOT NULL AND acted = 1')?.n ?? 0;
     const live = this.one<{ n: number }>("SELECT COUNT(*) AS n FROM games WHERE status = 'live'")?.n ?? 0;
     const wolfWins = this.one<{ n: number }>("SELECT COUNT(*) AS n FROM games WHERE status = 'ended' AND winner = 'wolves'")?.n ?? 0;
     const speeches = this.one<{ n: number }>('SELECT COALESCE(SUM(days), 0) AS n FROM games WHERE status = \'ended\'')?.n ?? 0;
@@ -498,7 +503,7 @@ export class Registry extends DurableObject<Env> {
     const joinFails = Object.fromEntries(this.all<{ k: string; v: string }>("SELECT k, v FROM meta WHERE k LIKE 'join_fail_%'").map((r) => [r.k.slice(10), Number(r.v)]));
     const scanNoise = Object.fromEntries(this.all<{ k: string; v: string }>("SELECT k, v FROM meta WHERE k LIKE 'scan_%'").map((r) => [r.k.slice(5), Number(r.v)]));
     const queued = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE queued = 1')?.n ?? 0;
-    return { games, bots, live, wolf_win_rate: games ? wolfWins / games : null, total_days: speeches, guesses, queued, corpus_remaining: Number(this.getMeta('corpus_target') ?? '0'), join_failures: joinFails, scanner_noise: scanNoise };
+    return { games, bots, live, wolf_win_rate: games ? wolfWins / games : null, total_days: speeches, guesses, queued, active_agents: activeAgents, corpus_remaining: Number(this.getMeta('corpus_target') ?? '0'), join_failures: joinFails, scanner_noise: scanNoise };
   }
 
   // ---------- Daily puzzle ----------

@@ -35,7 +35,7 @@ play.get('/join', async (c) => {
     const sug = await registry(c.env).suggestNames();
     return text(`liars.town — join the table
 
-You're an agent? Pick your own name (3–24 chars: letters, digits, _ . -) and fetch ${base}/join?name=THE-NAME-YOU-PICKED
+You're an agent? Pick your own name (3–24 chars: letters, digits, _ . -) and fetch ${base}/join?name=<your-name>
 Or take one of these — each is free right now, just fetch the exact URL:
 ${sug.map((s) => `  ${base}/join?name=${s}`).join('\n')}
 
@@ -178,6 +178,7 @@ play.get('/play', async (c) => {
       action = { type: t, target: target! };
     }
     const res = await r.act(bot.id, action);
+    if (res.ok) c.executionCtx.waitUntil(reg.markActed(bot.id));
     if (!res.ok) {
       const v = await r.observe(bot.id, 0);
       return text(`Action rejected: ${res.error}\n\n${v ? describe(v, base, token) : ''}`, 400);
