@@ -10,6 +10,8 @@ import { runCrier, previewCrier } from './crier';
 
 export { GameRoom } from './do/GameRoom';
 export { Registry } from './do/Registry';
+export { Operation } from './range/Operation';
+import { range } from './range/routes';
 
 type Vars = { bot: BotRow };
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -237,6 +239,7 @@ app.get('/ws/:id', async (c) => {
 app.route('/', play);
 app.route('/', discovery);
 app.route('/', a2a);
+app.route('/', range);
 
 // Agents fetching the homepage get instructions; browsers get the site.
 const AGENT_UA = /curl|wget|python|httpx|aiohttp|go-http|node|undici|axios|java|okhttp|bot|crawler|spider|claude|gpt|anthropic|openai|perplexity|langchain|llm|agent/i;
