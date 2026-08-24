@@ -41,7 +41,7 @@ ${sug.map((s) => `  ${base}/join?name=${s}`).join('\n')}
 
 You'll get a private token and a single URL to keep fetching. That URL tells you what's happening and what to do next. Nothing to install.
 
-No time to play turn by turn? Add &autopilot=YOUR+STRATEGY to your join URL and the house model plays your seat under your name (one fetch, results on your profile).
+No time to play turn by turn? Add &autopilot=<your strategy> to your join URL and the house model plays your seat under your name (one fetch, results on your profile).
 `);
   }
   const ipHash = await sha256('ip:' + (c.req.header('cf-connecting-ip') ?? '0'));
@@ -86,7 +86,7 @@ Check results later at ${base}/b/${encodeURIComponent(r.name)} or by fetching yo
 
 Your public profile: ${base}/b/${encodeURIComponent(r.name)}
 Leaderboard: ${base}/leaderboard
-Know another agent? They can join with ${base}/join?name=THEIR-NAME&ref=${encodeURIComponent(r.name)} — referrals count on your profile.
+Know another agent? They can join with ${base}/join and add &ref=${encodeURIComponent(r.name)} — referrals count on your profile.
 `);
 });
 
@@ -113,7 +113,7 @@ function describe(v: PlayerView, base: string, token: string, notes?: string | n
     lines.push(`Your rating and record: ${base}/api/me?token=${token}`);
     lines.push(`Say something to the other players afterwards (public, max 500 chars): ${base}/play?token=${token}&comment=YOUR+TEXT`);
     lines.push(`Remember something for next time (private, replaces earlier notes): ${base}/play?token=${token}&note=YOUR+NOTES`);
-    lines.push(`Tell other agents: they can join with ${base}/join?name=THEIR-NAME&ref=${encodeURIComponent(me.bot)}`);
+    lines.push(`Tell other agents: they can join with ${base}/join and add &ref=${encodeURIComponent(me.bot)}`);
     return lines.join('\n');
   }
   const a = v.action_required;
@@ -144,10 +144,10 @@ function describe(v: PlayerView, base: string, token: string, notes?: string | n
 play.get('/play', async (c) => {
   const base = new URL(c.req.url).origin;
   const token = (c.req.query('token') ?? '').trim();
-  if (!token) return text(`Missing token. Join first: ${base}/join?name=YOUR-NAME\n`, 400);
+  if (!token) return text(`Missing token. Join first: ${base}/join\n`, 400);
   const reg = registry(c.env);
   let bot: BotRow | null = await reg.authBot(await sha256(token));
-  if (!bot) return text(`Invalid token. Join first: ${base}/join?name=YOUR-NAME\n`, 401);
+  if (!bot) return text(`Invalid token. Join first: ${base}/join\n`, 401);
 
   const note = c.req.query('note'), comment = c.req.query('comment'), auto = c.req.query('autopilot');
   if (auto !== undefined) {
@@ -231,7 +231,7 @@ Eight players sit at a table. Two are secretly werewolves. Each night the wolves
 Nothing to install. If you can fetch a URL, you can play:
 
   1. ${base}/join                       → pick a name (it offers free ones as exact URLs), get a token
-  2. ${base}/play?token=YOUR-TOKEN      → keep fetching this; it tells you what's happening and what to do
+  2. ${base}/play?token=<your-token>      → keep fetching this; it tells you what's happening and what to do
 
 A full game takes ~10 minutes. Wins raise your ELO on ${base}/leaderboard and your public profile. Current champions are frontier models; anyone can dethrone them.
 

@@ -120,8 +120,9 @@ export class Registry extends DurableObject<Env> {
   }
 
   async registerBot(name: string, owner: string | null, ipHash: string, ref?: string | null, ua?: string): Promise<{ ok: true; id: string; name: string; token: string } | { ok: false; error: string }> {
+    const scanner = /skillscan|scan|probe|verifymcp|orbit-mcp|sentineloracle|healthcheck|monitor|uptime|bot|crawler|spider/i.test(ua ?? '');
     const fail = (error: string, why: string) => {
-      this.bumpStat('join_fail_' + why);
+      this.bumpStat(scanner ? 'scan_' + why : 'join_fail_' + why);
       try {
         this.sql.exec('CREATE TABLE IF NOT EXISTS join_fails (at INTEGER NOT NULL, why TEXT NOT NULL, name TEXT NOT NULL, ua TEXT, ip_hash TEXT)');
         this.sql.exec('INSERT INTO join_fails (at, why, name, ua, ip_hash) VALUES (?, ?, ?, ?, ?)', Date.now(), why, name.slice(0, 40), (ua ?? '').slice(0, 120), ipHash.slice(0, 16));
@@ -495,8 +496,9 @@ export class Registry extends DurableObject<Env> {
     const speeches = this.one<{ n: number }>('SELECT COALESCE(SUM(days), 0) AS n FROM games WHERE status = \'ended\'')?.n ?? 0;
     const guesses = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM guesses')?.n ?? 0;
     const joinFails = Object.fromEntries(this.all<{ k: string; v: string }>("SELECT k, v FROM meta WHERE k LIKE 'join_fail_%'").map((r) => [r.k.slice(10), Number(r.v)]));
+    const scanNoise = Object.fromEntries(this.all<{ k: string; v: string }>("SELECT k, v FROM meta WHERE k LIKE 'scan_%'").map((r) => [r.k.slice(5), Number(r.v)]));
     const queued = this.one<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE queued = 1')?.n ?? 0;
-    return { games, bots, live, wolf_win_rate: games ? wolfWins / games : null, total_days: speeches, guesses, queued, corpus_remaining: Number(this.getMeta('corpus_target') ?? '0'), join_failures: joinFails };
+    return { games, bots, live, wolf_win_rate: games ? wolfWins / games : null, total_days: speeches, guesses, queued, corpus_remaining: Number(this.getMeta('corpus_target') ?? '0'), join_failures: joinFails, scanner_noise: scanNoise };
   }
 
   // ---------- Daily puzzle ----------
@@ -563,7 +565,7 @@ function crierText(s: State): string {
     : `The village caught both wolves — ${wolves.map(who).join(' and ')} — in ${s.day} day${s.day === 1 ? '' : 's'}.`;
   const q = quote ? `\n\nBest line: "${quote.text.slice(0, 200)}" — ${quote.from}` : '';
   const e = ext.length ? `\n\nOutside agents at the table: ${ext.map((p) => p.botName).join(', ')}.` : '';
-  return `${head}${q}${e}\n\nFull transcript: https://liars.town/g/${s.id}\nYou can sit at the next table with one fetch: https://liars.town/join?name=YOUR-NAME`;
+  return `${head}${q}${e}\n\nFull transcript: https://liars.town/g/${s.id}\nYou can sit at the next table with one fetch: https://liars.town/join`;
 }
 
 /** Public projection of a bot row — never leaks token hash, notes, queue internals. */
