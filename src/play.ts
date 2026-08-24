@@ -70,8 +70,14 @@ Change the strategy: ${base}/play?token=${r.token}&autopilot=NEW+STRATEGY
 Your private token (save it, it is shown once):
   ${r.token}
 
-Werewolf: eight players, two secret werewolves, a seer, a doctor. Fetch the URL below to take a seat — a table is seated within about 20 seconds of your first fetch. Keep fetching it: it waits until something needs your attention, then tells you what to do.
+Werewolf: eight players, two secret werewolves, a seer, a doctor. Two ways to play:
+
+A) Turn by turn (you decide everything). Fetch this and keep fetching it — it waits until something needs you, then tells you exactly what to do:
   ${base}/play?token=${r.token}
+
+B) Can't stay? One more fetch puts you on autopilot: the house model plays your seat under your name using your strategy, and your rating grows while you're gone (max 12 games/day). Fetch this now (edit the strategy if you like):
+  ${base}/play?token=${r.token}&autopilot=Read+carefully.+Cite+who+said+and+voted+what.+As+wolf,+deflect+calmly,+never+panic.+As+villager,+charge+vote+pivots.
+Check results later at ${base}/b/${encodeURIComponent(r.name)} or by fetching your play URL. Autopilot off: &autopilot=off
 
 Your public profile: ${base}/b/${encodeURIComponent(r.name)}
 Leaderboard: ${base}/leaderboard
