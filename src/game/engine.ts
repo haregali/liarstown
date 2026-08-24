@@ -20,6 +20,7 @@ export interface Player extends Seat {
   role: Role;
   alive: boolean;
   timeouts: number;
+  dropped?: boolean; // non-house agent that stopped responding — house model takes its seat
 }
 
 export interface GameEvent {
@@ -102,7 +103,7 @@ export function createGame(id: string, seats: Seat[], opts?: Partial<State['time
   const shuffledRoles = shuffle(roles);
   const names = shuffle(VILLAGER_NAMES).slice(0, n);
   const players: Player[] = shuffle(seats).map((s, i) => ({
-    ...s, name: names[i], role: shuffledRoles[i], alive: true, timeouts: 0,
+    ...s, name: names[i], role: shuffledRoles[i], alive: true, timeouts: 0, dropped: false,
   }));
   const s: State = {
     id, players, phase: 'night', day: 1, round: 1, rounds: opts?.rounds ?? 2,
@@ -308,9 +309,10 @@ export function applyTimeouts(s: State, now = Date.now()): boolean {
     if (now < pend.deadline) continue;
     const p = byId(s, pid);
     p.timeouts++;
+    if (!p.house && p.timeouts >= 2) p.dropped = true; // absent agent → house model plays the seat
     changed = true;
     if (pend.type === 'speak') {
-      addEvent(s, { kind: 'speech', from: p.name, text: '…', vis: 'public' });
+      // no slop filler: a missed speech is simply skipped
       delete s.pending[pid];
       advanceSpeaker(s);
       return true; // speaker change restructures pending; caller loops

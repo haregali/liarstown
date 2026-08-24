@@ -150,7 +150,7 @@ export async function callOpenRouter(apiKey: string, model: string, system: stri
 export async function houseAct(apiKey: string, model: string, view: PlayerView, persona: string): Promise<Action | null> {
   const { system, user } = buildPrompt(view, persona);
   try {
-    const raw = await callOpenRouter(apiKey, model, system, user, view.action_required?.type === 'speak' ? 700 : 200);
+    const raw = await callOpenRouter(apiKey, model, system, user, view.action_required?.type === 'speak' ? 1000 : 220);
     return parseAction(raw, view);
   } catch (e) {
     console.error('house bot error', model, String(e));

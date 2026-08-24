@@ -112,7 +112,7 @@ export class GameRoom extends DurableObject<Env> {
 
     // 2. drive house bots (bounded per alarm so we don't hold one alarm forever)
     for (let iter = 0; iter < HOUSE_ITER_PER_ALARM && !ended(); iter++) {
-      const housePending = Object.keys(s.pending).filter((pid) => { const p = s.players.find((q) => q.id === pid); return p?.house || !!p?.autopilot; });
+      const housePending = Object.keys(s.pending).filter((pid) => { const p = s.players.find((q) => q.id === pid); return p?.house || !!p?.autopilot || !!p?.dropped; });
       if (!housePending.length) break;
       const results = await Promise.all(housePending.map(async (pid) => {
         const p = s.players.find((q) => q.id === pid)!;
@@ -124,10 +124,16 @@ export class GameRoom extends DurableObject<Env> {
         const pend = s.pending[pid];
         if (!pend || pend.type !== type) continue; // phase moved on while we were thinking
         let err = a ? submit(s, pid, a) : 'no action';
+        if (err && pend.type === 'speak') {
+          // retry once with a reliable model before any filler
+          const retry = await houseAct(this.env.OPENROUTER_API_KEY, 'deepseek/deepseek-v4-flash', viewFor(s, pid), personaFor(pid + s.id + 'r'));
+          err = retry ? submit(s, pid, retry) : 'retry failed';
+        }
         if (err) {
-          // graceful fallback so the game never stalls on a flaky model
+          const p = s.players.find((q) => q.id === pid)!;
+          const fillers = ["I want to hear more before I commit.", "I am weighing what has been said — go on.", "Not ready to point a finger yet; keep talking.", "Say more. I am listening closely.", "I need a clearer read before I vote.", "Hold on — let us hear the others first."];
           const fallback: Action = pend.type === 'speak'
-            ? { type: 'speak', text: 'I need to hear more before I commit to anything.' }
+            ? { type: 'speak', text: fillers[(s.events.length + p.name.charCodeAt(0)) % fillers.length] }
             : pend.type === 'vote' ? { type: 'vote', target: 'abstain' }
               : { type: pend.type, target: pend.options[Math.floor(Math.random() * pend.options.length)] };
           err = submit(s, pid, fallback);
